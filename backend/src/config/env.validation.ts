@@ -1,4 +1,4 @@
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -27,10 +27,11 @@ export class EnvironmentVariables {
   NODE_ENV: Environment = Environment.Development;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(65535)
-  PORT = 3000;
+  PORT: number = 3000;
 
   @IsString()
   @IsNotEmpty()
