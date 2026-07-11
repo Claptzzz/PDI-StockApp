@@ -7,6 +7,8 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { CoursesModule } from './courses/courses.module';
 import { GroupsModule } from './groups/groups.module';
+import { ComponentsModule } from './components/components.module';
+import { KitTemplatesModule } from './kit-templates/kit-templates.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 
@@ -20,6 +22,8 @@ import { RolesGuard } from './auth/guards/roles.guard';
     AuthModule,
     CoursesModule,
     GroupsModule,
+    ComponentsModule,
+    KitTemplatesModule,
     HealthModule,
   ],
   providers: [
