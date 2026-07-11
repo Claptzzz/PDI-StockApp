@@ -7,6 +7,6 @@ import { CourseAccessGuard } from './course-access.guard';
 @Module({
   controllers: [CoursesController, CourseProfessorsController],
   providers: [CoursesService, CourseAccessGuard],
-  exports: [CoursesService],
+  exports: [CoursesService, CourseAccessGuard],
 })
 export class CoursesModule {}
