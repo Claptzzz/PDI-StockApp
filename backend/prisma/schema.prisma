@@ -1,13 +1,157 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  PROFESSOR
+  ADMIN
+}
+
+enum KitStatus {
+  ASSIGNED
+  RETURNED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  role      Role
+  googleId  String?  @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groupMemberships GroupMember[]
+  coursesTaught    CourseProfessor[]
+  loansGiven       Loan[]            @relation("LoanGivenBy")
+}
+
+model Course {
+  id        String   @id @default(cuid())
+  name      String
+  year      Int
+  semester  Int
+  createdAt DateTime @default(now())
+
+  groups     Group[]
+  professors CourseProfessor[]
+
+  @@unique([name, year, semester])
+}
+
+model CourseProfessor {
+  id          String   @id @default(cuid())
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  professor   User     @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  professorId String
+  authorized  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@unique([courseId, professorId])
+}
+
+model Group {
+  id        String   @id @default(cuid())
+  name      String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId  String
+  createdAt DateTime @default(now())
+
+  members GroupMember[]
+  kits    Kit[]
+  loans   Loan[]
+
+  @@unique([name, courseId])
+}
+
+model GroupMember {
+  id        String @id @default(cuid())
+  group     Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+
+  @@unique([groupId, studentId])
+}
+
+model Component {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  totalStock  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  kitTemplateItems KitTemplateItem[]
+  kitItems         KitItem[]
+  loans            Loan[]
+}
+
+model KitTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  items KitTemplateItem[]
+  kits  Kit[]
+}
+
+model KitTemplateItem {
+  id          String      @id @default(cuid())
+  template    KitTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId  String
+  component   Component   @relation(fields: [componentId], references: [id])
+  componentId String
+  quantity    Int
+
+  @@unique([templateId, componentId])
+}
+
+model Kit {
+  id         String       @id @default(cuid())
+  code       String       @unique
+  group      Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId    String
+  template   KitTemplate? @relation(fields: [templateId], references: [id])
+  templateId String?
+  status     KitStatus    @default(ASSIGNED)
+  assignedAt DateTime     @default(now())
+  returnedAt DateTime?
+
+  items KitItem[]
+}
+
+model KitItem {
+  id               String     @id @default(cuid())
+  kit              Kit        @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  kitId            String
+  component        Component? @relation(fields: [componentId], references: [id])
+  componentId      String?
+  componentName    String
+  quantity         Int
+  returnedQuantity Int        @default(0)
+}
+
+model Loan {
+  id               String     @id @default(cuid())
+  group            Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId          String
+  component        Component? @relation(fields: [componentId], references: [id])
+  componentId      String?
+  componentName    String
+  quantity         Int        @default(1)
+  returnedQuantity Int        @default(0)
+  photoUrl         String?
+  note             String?
+  loanedBy         User       @relation("LoanGivenBy", fields: [loanedById], references: [id])
+  loanedById       String
+  loanedAt         DateTime   @default(now())
+  returnedAt       DateTime?
 }
