@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { KitStatus } from '@prisma/client';
+import { KitStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Cliente Prisma o cliente de transacción (para calcular dentro de un $transaction). */
+type PrismaClientLike = PrismaService | Prisma.TransactionClient;
 
 export interface Commitment {
   /** Unidades comprometidas en kits ASSIGNED (quantity - returnedQuantity). */
@@ -31,7 +34,10 @@ export class StockService {
    * Devuelve, en lote y sin N+1 (2 agregaciones groupBy), las unidades comprometidas
    * por componente. Los componentes sin compromisos quedan en { inKits: 0, inLoans: 0 }.
    */
-  async getCommitments(componentIds: string[]): Promise<Map<string, Commitment>> {
+  async getCommitments(
+    componentIds: string[],
+    client: PrismaClientLike = this.prisma,
+  ): Promise<Map<string, Commitment>> {
     const result = new Map<string, Commitment>();
     for (const id of componentIds) {
       result.set(id, { inKits: 0, inLoans: 0 });
@@ -41,12 +47,12 @@ export class StockService {
     }
 
     const [kitAgg, loanAgg] = await Promise.all([
-      this.prisma.kitItem.groupBy({
+      client.kitItem.groupBy({
         by: ['componentId'],
         where: { componentId: { in: componentIds }, kit: { status: KitStatus.ASSIGNED } },
         _sum: { quantity: true, returnedQuantity: true },
       }),
-      this.prisma.loan.groupBy({
+      client.loan.groupBy({
         by: ['componentId'],
         where: { componentId: { in: componentIds } },
         _sum: { quantity: true, returnedQuantity: true },

@@ -330,7 +330,7 @@ export class GroupsService {
   }
 
   /** Garantiza que el grupo exista y pertenezca al curso indicado. */
-  private async ensureGroupInCourse(courseId: string, groupId: string): Promise<void> {
+  async ensureGroupInCourse(courseId: string, groupId: string): Promise<void> {
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
       select: { courseId: true },

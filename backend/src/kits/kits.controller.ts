@@ -1,0 +1,76 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { CourseAccessGuard } from '../courses/course-access.guard';
+import { KitsService } from './kits.service';
+import { AssignKitDto } from './dto/assign-kit.dto';
+import { UpdateKitDto } from './dto/update-kit.dto';
+
+@Controller('courses/:courseId/groups/:groupId/kits')
+@UseGuards(CourseAccessGuard)
+export class GroupKitsController {
+  constructor(private readonly kitsService: KitsService) {}
+
+  @Post()
+  assign(
+    @Param('courseId') courseId: string,
+    @Param('groupId') groupId: string,
+    @Body() dto: AssignKitDto,
+  ) {
+    return this.kitsService.assign(courseId, groupId, dto);
+  }
+
+  @Get()
+  list(@Param('courseId') courseId: string, @Param('groupId') groupId: string) {
+    return this.kitsService.listByGroup(courseId, groupId);
+  }
+
+  @Get(':kitId')
+  getOne(
+    @Param('courseId') courseId: string,
+    @Param('groupId') groupId: string,
+    @Param('kitId') kitId: string,
+  ) {
+    return this.kitsService.getOne(courseId, groupId, kitId);
+  }
+
+  @Patch(':kitId')
+  updateCode(
+    @Param('courseId') courseId: string,
+    @Param('groupId') groupId: string,
+    @Param('kitId') kitId: string,
+    @Body() dto: UpdateKitDto,
+  ) {
+    return this.kitsService.updateCode(courseId, groupId, kitId, dto.code);
+  }
+
+  @Delete(':kitId')
+  @HttpCode(HttpStatus.OK)
+  remove(
+    @Param('courseId') courseId: string,
+    @Param('groupId') groupId: string,
+    @Param('kitId') kitId: string,
+  ) {
+    return this.kitsService.remove(courseId, groupId, kitId);
+  }
+}
+
+@Controller('courses/:courseId/kits')
+@UseGuards(CourseAccessGuard)
+export class CourseKitsController {
+  constructor(private readonly kitsService: KitsService) {}
+
+  @Get()
+  list(@Param('courseId') courseId: string) {
+    return this.kitsService.listByCourse(courseId);
+  }
+}
