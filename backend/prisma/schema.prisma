@@ -42,6 +42,7 @@ model Course {
 
   groups     Group[]
   professors CourseProfessor[]
+  kits       Kit[]
 
   @@unique([name, year, semester])
 }
@@ -116,9 +117,11 @@ model KitTemplateItem {
 
 model Kit {
   id         String       @id @default(cuid())
-  code       String       @unique
+  code       String
   group      Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId    String
+  course     Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId   String
   template   KitTemplate? @relation(fields: [templateId], references: [id])
   templateId String?
   status     KitStatus    @default(ASSIGNED)
@@ -126,6 +129,8 @@ model Kit {
   returnedAt DateTime?
 
   items KitItem[]
+
+  @@unique([code, courseId])
 }
 
 model KitItem {

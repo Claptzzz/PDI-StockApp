@@ -7,5 +7,6 @@ import { GroupsService } from './groups.service';
   imports: [CoursesModule], // aporta CourseAccessGuard (y CoursesService)
   controllers: [GroupsController],
   providers: [GroupsService],
+  exports: [GroupsService],
 })
 export class GroupsModule {}
