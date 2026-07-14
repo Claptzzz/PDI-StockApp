@@ -44,15 +44,19 @@ export interface ImportReport {
 @Injectable()
 export class GroupsService {
   private readonly adminEmails: string[];
+  private readonly professorEmails: string[];
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
-    this.adminEmails = (config.get<string>('ADMIN_EMAILS') ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
+    const parse = (raw: string | undefined) =>
+      (raw ?? '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean);
+    this.adminEmails = parse(config.get<string>('ADMIN_EMAILS'));
+    this.professorEmails = parse(config.get<string>('PROFESSOR_EMAILS'));
   }
 
   // --- Grupos ------------------------------------------------------------
@@ -140,7 +144,7 @@ export class GroupsService {
     await this.ensureGroupInCourse(courseId, groupId);
 
     const email = rawEmail.trim().toLowerCase();
-    if (resolveRole(email, this.adminEmails) !== Role.STUDENT) {
+    if (resolveRole(email, this.adminEmails, this.professorEmails) !== Role.STUDENT) {
       throw new BadRequestException('El correo no es de un alumno (@alumnos.ucn.cl)');
     }
 
@@ -256,7 +260,7 @@ export class GroupsService {
     const groupName = (row.nombreGrupo ?? '').trim();
     const name = `${nombre} ${apellido}`.trim() || email;
 
-    if (!email || resolveRole(email, this.adminEmails) !== Role.STUDENT) {
+    if (!email || resolveRole(email, this.adminEmails, this.professorEmails) !== Role.STUDENT) {
       return { ok: false, email, reason: 'El correo no es de un alumno (@alumnos.ucn.cl)' };
     }
     if (!groupName) {

@@ -17,6 +17,7 @@ export class AuthService {
   private readonly oauthClient: OAuth2Client;
   private readonly googleClientId: string;
   private readonly adminEmails: string[];
+  private readonly professorEmails: string[];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -25,10 +26,8 @@ export class AuthService {
   ) {
     this.googleClientId = config.getOrThrow<string>('GOOGLE_CLIENT_ID');
     this.oauthClient = new OAuth2Client(this.googleClientId);
-    this.adminEmails = (config.get<string>('ADMIN_EMAILS') ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
+    this.adminEmails = parseEmailList(config.get<string>('ADMIN_EMAILS'));
+    this.professorEmails = parseEmailList(config.get<string>('PROFESSOR_EMAILS'));
   }
 
   async loginWithGoogle(idToken: string): Promise<GoogleLoginResult> {
@@ -40,7 +39,7 @@ export class AuthService {
     }
     const name = payload.name?.trim() || email;
 
-    const derivedRole = resolveRole(email, this.adminEmails);
+    const derivedRole = resolveRole(email, this.adminEmails, this.professorEmails);
     if (derivedRole === null) {
       throw new ForbiddenException('Correo institucional no válido');
     }
@@ -101,9 +100,10 @@ export class AuthService {
       if (!existing.googleId) {
         data.googleId = googleId;
       }
-      // Promueve a ADMIN si el correo entró al allowlist (nunca degrada un rol).
-      if (derivedRole === Role.ADMIN && existing.role !== Role.ADMIN) {
-        data.role = Role.ADMIN;
+      // Promueve si el rol derivado por los allowlists es más fuerte que el actual.
+      // Orden de fuerza: ADMIN > PROFESSOR > STUDENT. Nunca degrada.
+      if (ROLE_RANK[derivedRole] > ROLE_RANK[existing.role]) {
+        data.role = derivedRole;
       }
 
       if (Object.keys(data).length > 0) {
@@ -117,4 +117,17 @@ export class AuthService {
       data: { email, name, role: derivedRole, googleId },
     });
   }
+}
+
+const ROLE_RANK: Record<Role, number> = {
+  [Role.STUDENT]: 1,
+  [Role.PROFESSOR]: 2,
+  [Role.ADMIN]: 3,
+};
+
+function parseEmailList(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
 }

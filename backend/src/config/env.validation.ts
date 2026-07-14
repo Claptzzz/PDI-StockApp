@@ -54,6 +54,11 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   ADMIN_EMAILS: string;
 
+  /** Lista opcional de correos con rol PROFESSOR (p.ej. profes con correo no institucional). */
+  @IsOptional()
+  @IsString()
+  PROFESSOR_EMAILS?: string;
+
   @IsString()
   @IsNotEmpty()
   SUPABASE_URL: string;
