@@ -189,6 +189,100 @@ export class KitsService {
     return { deleted: true };
   }
 
+  /**
+   * Devolución granular de un ítem del snapshot del kit. Incrementa
+   * returnedQuantity (<= pendiente) y, si TODOS los ítems quedan devueltos,
+   * cierra el kit (status=RETURNED, returnedAt=now). Solo avanza.
+   */
+  async returnItem(
+    courseId: string,
+    groupId: string,
+    kitId: string,
+    kitItemId: string,
+    quantity: number,
+  ) {
+    await this.groupsService.ensureGroupInCourse(courseId, groupId);
+    await this.assertKitInGroup(kitId, groupId);
+
+    const item = await this.prisma.kitItem.findUnique({ where: { id: kitItemId } });
+    if (!item || item.kitId !== kitId) {
+      throw new NotFoundException('Ítem no encontrado en este kit');
+    }
+
+    const pending = item.quantity - item.returnedQuantity;
+    if (quantity > pending) {
+      throw new BadRequestException(
+        `No puedes devolver ${quantity}: solo hay ${pending} unidad(es) pendiente(s) de este ítem`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.kitItem.update({
+        where: { id: kitItemId },
+        data: { returnedQuantity: item.returnedQuantity + quantity },
+      });
+
+      const items = await tx.kitItem.findMany({
+        where: { kitId },
+        select: { quantity: true, returnedQuantity: true },
+      });
+      const allReturned = items.every((it) => it.returnedQuantity >= it.quantity);
+
+      if (allReturned) {
+        await tx.kit.update({
+          where: { id: kitId },
+          data: { status: KitStatus.RETURNED, returnedAt: new Date() },
+        });
+      }
+    });
+
+    return this.getKitDetail(kitId);
+  }
+
+  /** Resumen de devoluciones del grupo (kits + préstamos) para fin de semestre. */
+  async returnsSummary(courseId: string, groupId: string) {
+    await this.groupsService.ensureGroupInCourse(courseId, groupId);
+
+    const [kits, loans] = await Promise.all([
+      this.prisma.kit.findMany({
+        where: { groupId },
+        include: { items: { orderBy: { componentName: 'asc' } } },
+        orderBy: { assignedAt: 'desc' },
+      }),
+      this.prisma.loan.findMany({ where: { groupId }, orderBy: { loanedAt: 'desc' } }),
+    ]);
+
+    const kitSummaries = kits.map((kit) => {
+      const items = kit.items.map((it) => ({
+        kitItemId: it.id,
+        componentName: it.componentName,
+        quantity: it.quantity,
+        returnedQuantity: it.returnedQuantity,
+        pending: it.quantity - it.returnedQuantity,
+      }));
+      return {
+        kitId: kit.id,
+        code: kit.code,
+        status: kit.status,
+        allReturned: items.every((it) => it.pending === 0),
+        items,
+      };
+    });
+
+    const loanSummaries = loans.map((loan) => ({
+      loanId: loan.id,
+      componentName: loan.componentName,
+      quantity: loan.quantity,
+      returnedQuantity: loan.returnedQuantity,
+      pending: loan.quantity - loan.returnedQuantity,
+    }));
+
+    const allReturned =
+      kitSummaries.every((k) => k.allReturned) && loanSummaries.every((l) => l.pending === 0);
+
+    return { groupId, allReturned, kits: kitSummaries, loans: loanSummaries };
+  }
+
   // --- Helpers -----------------------------------------------------------
 
   private async itemsFromTemplate(templateId: string): Promise<DesiredItem[]> {

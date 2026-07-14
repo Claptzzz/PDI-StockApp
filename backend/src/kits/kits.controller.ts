@@ -14,6 +14,7 @@ import { CourseAccessGuard } from '../courses/course-access.guard';
 import { KitsService } from './kits.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
 import { UpdateKitDto } from './dto/update-kit.dto';
+import { ReturnKitItemDto } from './dto/return-kit-item.dto';
 
 @Controller('courses/:courseId/groups/:groupId/kits')
 @UseGuards(CourseAccessGuard)
@@ -53,6 +54,17 @@ export class GroupKitsController {
     return this.kitsService.updateCode(courseId, groupId, kitId, dto.code);
   }
 
+  @Patch(':kitId/items/:kitItemId/return')
+  returnItem(
+    @Param('courseId') courseId: string,
+    @Param('groupId') groupId: string,
+    @Param('kitId') kitId: string,
+    @Param('kitItemId') kitItemId: string,
+    @Body() dto: ReturnKitItemDto,
+  ) {
+    return this.kitsService.returnItem(courseId, groupId, kitId, kitItemId, dto.quantity);
+  }
+
   @Delete(':kitId')
   @HttpCode(HttpStatus.OK)
   remove(
@@ -72,5 +84,16 @@ export class CourseKitsController {
   @Get()
   list(@Param('courseId') courseId: string) {
     return this.kitsService.listByCourse(courseId);
+  }
+}
+
+@Controller('courses/:courseId/groups/:groupId')
+@UseGuards(CourseAccessGuard)
+export class GroupReturnsController {
+  constructor(private readonly kitsService: KitsService) {}
+
+  @Get('returns-summary')
+  summary(@Param('courseId') courseId: string, @Param('groupId') groupId: string) {
+    return this.kitsService.returnsSummary(courseId, groupId);
   }
 }
