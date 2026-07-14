@@ -96,11 +96,18 @@ export class AuthService {
         throw new ForbiddenException('Cuenta deshabilitada');
       }
 
+      const data: { googleId?: string; role?: Role } = {};
+      // Enlaza el googleId en el primer login si aún no estaba.
       if (!existing.googleId) {
-        return this.prisma.user.update({
-          where: { id: existing.id },
-          data: { googleId },
-        });
+        data.googleId = googleId;
+      }
+      // Promueve a ADMIN si el correo entró al allowlist (nunca degrada un rol).
+      if (derivedRole === Role.ADMIN && existing.role !== Role.ADMIN) {
+        data.role = Role.ADMIN;
+      }
+
+      if (Object.keys(data).length > 0) {
+        return this.prisma.user.update({ where: { id: existing.id }, data });
       }
 
       return existing;
