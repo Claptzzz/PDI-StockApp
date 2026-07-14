@@ -1,7 +1,102 @@
 @import 'tailwindcss';
+@import '@fontsource/source-sans-3/400.css';
+@import '@fontsource/source-sans-3/600.css';
+@import '@fontsource/source-sans-3/700.css';
 
+/*
+ * Fuente de verdad de la identidad UCN (ver "Design tokens ucn.md").
+ * Los hex viven SOLO aquí; Tailwind los referencia vía @theme inline.
+ */
 :root {
-  color-scheme: light dark;
+  /* Marca institucional */
+  --ucn-navy: #151f3f;
+  --ucn-blue: #166499;
+  --ucn-sky: #7c9ac0;
+  --ucn-terracota: #bb6125;
+  --ucn-ocre: #a56829;
+  --ucn-ambar: #d5a140;
+
+  /* Roles semánticos */
+  --color-primary: #166499;
+  --color-primary-hover: #12547f;
+  --color-primary-active: #0f4468;
+  --color-accent: #bb6125;
+
+  /* Funcionales */
+  --color-success: #2e7d32;
+  --color-warning: #d5a140;
+  --color-danger: #b3261e;
+  --color-info: #166499;
+
+  /* Neutros */
+  --gray-50: #f7f8fa;
+  --gray-100: #eef1f5;
+  --gray-200: #dde2ea;
+  --gray-400: #9aa5b5;
+  --gray-600: #586274;
+  --gray-900: #151f3f;
+
+  /* Texto */
+  --text-primary: #151f3f;
+  --text-secondary: #586274;
+  --text-muted: #9aa5b5;
+  --text-on-primary: #ffffff;
+
+  /* Superficies */
+  --surface-page: #f7f8fa;
+  --surface-card: #ffffff;
+  --border: #dde2ea;
+
+  /* Tipografía */
+  --font-sans: 'Source Sans 3', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Layout */
+  --radius: 8px;
+  --radius-card: 12px;
+}
+
+/*
+ * Mapeo a Tailwind v4. `inline` hace que las utilidades sustituyan el var()
+ * directamente (no re-emite las custom properties), así :root sigue siendo la
+ * única fuente y no se duplican los hex.
+ */
+@theme inline {
+  --color-navy: var(--ucn-navy);
+  --color-blue: var(--ucn-blue);
+  --color-sky: var(--ucn-sky);
+  --color-terracota: var(--ucn-terracota);
+  --color-ocre: var(--ucn-ocre);
+  --color-ambar: var(--ucn-ambar);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-active: var(--color-primary-active);
+  --color-accent: var(--color-accent);
+
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+
+  --color-gray-50: var(--gray-50);
+  --color-gray-100: var(--gray-100);
+  --color-gray-200: var(--gray-200);
+  --color-gray-400: var(--gray-400);
+  --color-gray-600: var(--gray-600);
+  --color-gray-900: var(--gray-900);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-on-primary: var(--text-on-primary);
+
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-border: var(--border);
+
+  --font-sans: var(--font-sans);
+
+  --radius-card: var(--radius-card);
 }
 
 html,
@@ -12,5 +107,9 @@ body,
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  background-color: var(--surface-page);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
