@@ -53,6 +53,18 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   ADMIN_EMAILS: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_URL: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_SERVICE_ROLE_KEY: string;
+
+  @IsString()
+  @IsNotEmpty()
+  SUPABASE_BUCKET: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
