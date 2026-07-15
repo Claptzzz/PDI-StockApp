@@ -7,6 +7,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { StudentModule } from './student/student.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { CoursesModule } from './courses/courses.module';
 import { GroupsModule } from './groups/groups.module';
 import { ComponentsModule } from './components/components.module';
@@ -27,6 +28,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     AuthModule,
     UsersModule,
     StudentModule,
+    MetricsModule,
     CoursesModule,
     GroupsModule,
     ComponentsModule,

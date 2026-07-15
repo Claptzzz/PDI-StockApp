@@ -6,6 +6,7 @@ import Login from '@/pages/Login';
 import { AccountsPage } from '@/pages/admin/AccountsPage';
 import { CoursesPage } from '@/pages/admin/CoursesPage';
 import { WarehousePage } from '@/pages/admin/WarehousePage';
+import { MetricsPage } from '@/pages/admin/MetricsPage';
 import { ProfesorCoursesPage } from '@/pages/profesor/CoursesPage';
 import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
 import { GroupPage } from '@/pages/profesor/GroupPage';
@@ -28,7 +29,8 @@ function App() {
           <Route path="/" element={<RootRedirect />} />
 
           <Route path="/admin" element={<RoleRoute roles={['ADMIN']} />}>
-            <Route index element={<Navigate to="/admin/cuentas" replace />} />
+            <Route index element={<Navigate to="/admin/metricas" replace />} />
+            <Route path="metricas" element={<MetricsPage />} />
             <Route path="cuentas" element={<AccountsPage />} />
             <Route path="cursos" element={<CoursesPage />} />
             <Route path="bodega" element={<WarehousePage />} />

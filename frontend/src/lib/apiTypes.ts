@@ -140,6 +140,46 @@ export interface Loan {
 
 // --- Resumen de devoluciones ---
 
+// --- Métricas (admin) ---
+
+export interface MetricsOverview {
+  courses: number;
+  groups: number;
+  students: number;
+  kitsAssigned: number;
+  kitsReturned: number;
+  loansPending: number;
+  loansTotal: number;
+}
+
+export interface StockRow {
+  id: string;
+  name: string;
+  totalStock: number;
+  committedInKits: number;
+  committedInLoans: number;
+  available: number;
+  lowStock: boolean;
+}
+
+export interface UsageRow {
+  name: string;
+  totalUsed: number;
+  inKits: number;
+  inLoans: number;
+}
+
+export interface PendingReturnsCourse {
+  course: { id: string; name: string; year: number; semester: number };
+  groups: {
+    groupId: string;
+    groupName: string;
+    pendingKitItems: number;
+    pendingLoans: number;
+    totalPendingUnits: number;
+  }[];
+}
+
 // --- Vista de estudiante (endpoints /me) ---
 
 export interface MyGroupSummary {
