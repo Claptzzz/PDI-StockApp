@@ -66,6 +66,129 @@ export class CoursesService {
     throw new ForbiddenException('Acceso restringido a la gestión del curso');
   }
 
+  /**
+   * Regla de OPERACIÓN por curso (más amplia que "manage"):
+   * - ADMIN     → siempre.
+   * - PROFESSOR → si tiene CourseProfessor.authorized=true en el curso.
+   * - STUDENT   → si tiene CourseAssistant.active=true en el curso (ayudante).
+   */
+  async assertCourseOperate(user: AuthenticatedUser, courseId: string): Promise<void> {
+    if (user.role === Role.ADMIN) return;
+
+    if (user.role === Role.PROFESSOR) {
+      const link = await this.prisma.courseProfessor.findUnique({
+        where: { courseId_professorId: { courseId, professorId: user.id } },
+      });
+      if (link?.authorized) return;
+      throw new ForbiddenException('No estás autorizado en este curso');
+    }
+
+    if (user.role === Role.STUDENT) {
+      const assistant = await this.prisma.courseAssistant.findUnique({
+        where: { courseId_assistantId: { courseId, assistantId: user.id } },
+      });
+      if (assistant?.active) return;
+      throw new ForbiddenException('No eres ayudante de este curso');
+    }
+
+    throw new ForbiddenException('Acceso restringido');
+  }
+
+  // --- Ayudantes del curso ----------------------------------------------
+
+  async listAssistants(courseId: string) {
+    await this.ensureCourseExists(courseId);
+    const rows = await this.prisma.courseAssistant.findMany({
+      where: { courseId },
+      include: { assistant: { select: { id: true, email: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((a) => ({
+      assistantId: a.assistantId,
+      active: a.active,
+      createdAt: a.createdAt,
+      assistant: a.assistant,
+    }));
+  }
+
+  async addAssistant(courseId: string, email: string) {
+    await this.ensureCourseExists(courseId);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const derivedRole = resolveRole(normalizedEmail, this.adminEmails, this.professorEmails);
+    if (derivedRole !== Role.STUDENT) {
+      throw new BadRequestException('El correo debe ser de un alumno (@alumnos.ucn.cl)');
+    }
+
+    const student = await this.resolveStudentUser(normalizedEmail);
+
+    try {
+      const created = await this.prisma.courseAssistant.create({
+        data: { courseId, assistantId: student.id, active: true },
+        include: { assistant: { select: { id: true, email: true, name: true } } },
+      });
+      return {
+        assistantId: created.assistantId,
+        active: created.active,
+        createdAt: created.createdAt,
+        assistant: created.assistant,
+      };
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException('El alumno ya es ayudante de este curso');
+      }
+      throw error;
+    }
+  }
+
+  async setAssistantActive(courseId: string, assistantId: string, active: boolean) {
+    try {
+      const updated = await this.prisma.courseAssistant.update({
+        where: { courseId_assistantId: { courseId, assistantId } },
+        data: { active },
+        include: { assistant: { select: { id: true, email: true, name: true } } },
+      });
+      return {
+        assistantId: updated.assistantId,
+        active: updated.active,
+        assistant: updated.assistant,
+      };
+    } catch (error) {
+      if (this.isNotFound(error)) {
+        throw new NotFoundException('El alumno no es ayudante de este curso');
+      }
+      throw error;
+    }
+  }
+
+  async removeAssistant(courseId: string, assistantId: string) {
+    try {
+      await this.prisma.courseAssistant.delete({
+        where: { courseId_assistantId: { courseId, assistantId } },
+      });
+      return { deleted: true };
+    } catch (error) {
+      if (this.isNotFound(error)) {
+        throw new NotFoundException('El alumno no es ayudante de este curso');
+      }
+      throw error;
+    }
+  }
+
+  /** Busca el User alumno por email; si no existe lo pre-crea como STUDENT. */
+  private async resolveStudentUser(email: string) {
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      if (existing.role !== Role.STUDENT) {
+        throw new BadRequestException('El usuario existe y no es un alumno');
+      }
+      return existing;
+    }
+    return this.prisma.user.create({
+      data: { email, name: nameFromEmail(email), role: Role.STUDENT, isActive: true },
+    });
+  }
+
   // --- Cursos ------------------------------------------------------------
 
   async create(dto: CreateCourseDto) {

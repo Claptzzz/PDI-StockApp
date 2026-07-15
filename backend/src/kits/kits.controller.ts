@@ -10,14 +10,14 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { CourseAccessGuard } from '../courses/course-access.guard';
+import { CourseOperateGuard } from '../courses/course-operate.guard';
 import { KitsService } from './kits.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
 import { UpdateKitDto } from './dto/update-kit.dto';
 import { ReturnKitItemDto } from './dto/return-kit-item.dto';
 
 @Controller('courses/:courseId/groups/:groupId/kits')
-@UseGuards(CourseAccessGuard)
+@UseGuards(CourseOperateGuard)
 export class GroupKitsController {
   constructor(private readonly kitsService: KitsService) {}
 
@@ -77,7 +77,7 @@ export class GroupKitsController {
 }
 
 @Controller('courses/:courseId/kits')
-@UseGuards(CourseAccessGuard)
+@UseGuards(CourseOperateGuard)
 export class CourseKitsController {
   constructor(private readonly kitsService: KitsService) {}
 
@@ -88,7 +88,7 @@ export class CourseKitsController {
 }
 
 @Controller('courses/:courseId/groups/:groupId')
-@UseGuards(CourseAccessGuard)
+@UseGuards(CourseOperateGuard)
 export class GroupReturnsController {
   constructor(private readonly kitsService: KitsService) {}
 

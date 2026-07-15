@@ -36,6 +36,27 @@ export class UsersService {
     });
   }
 
+  /** Busca alumnos por nombre/correo (top 10) para autocompletado. */
+  async searchStudents(q: string) {
+    const term = q.trim();
+    return this.prisma.user.findMany({
+      where: {
+        role: Role.STUDENT,
+        ...(term
+          ? {
+              OR: [
+                { name: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+      take: 10,
+    });
+  }
+
   async setActive(currentUser: AuthenticatedUser, id: string, isActive: boolean) {
     const target = await this.prisma.user.findUnique({
       where: { id },

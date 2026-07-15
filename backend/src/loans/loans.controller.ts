@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CourseAccessGuard } from '../courses/course-access.guard';
+import { CourseOperateGuard } from '../courses/course-operate.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/interfaces/auth.types';
 import { MulterExceptionFilter } from '../groups/multer-exception.filter';
@@ -26,7 +26,7 @@ import { ReturnLoanDto } from './dto/return-loan.dto';
 const FIVE_MB = 5 * 1024 * 1024;
 
 @Controller('courses/:courseId/groups/:groupId/loans')
-@UseGuards(CourseAccessGuard)
+@UseGuards(CourseOperateGuard)
 export class LoansController {
   constructor(private readonly loansService: LoansService) {}
 

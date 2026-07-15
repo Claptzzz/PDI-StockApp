@@ -15,6 +15,16 @@ export class StudentController {
     return this.studentService.listMyGroups(user.id);
   }
 
+  @Get('assistant-courses')
+  listAssistantCourses(@CurrentUser() user: AuthenticatedUser) {
+    return this.studentService.listAssistantCourses(user.id);
+  }
+
+  @Get('contexts')
+  getContexts(@CurrentUser() user: AuthenticatedUser) {
+    return this.studentService.getContexts(user.id);
+  }
+
   @Get('groups/:groupId')
   getMyGroup(@CurrentUser() user: AuthenticatedUser, @Param('groupId') groupId: string) {
     return this.studentService.getMyGroup(user.id, groupId);

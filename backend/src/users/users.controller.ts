@@ -17,6 +17,13 @@ export class UsersController {
     return this.usersService.list(query);
   }
 
+  // Accesible también a PROFESSOR (para el combobox de ayudantes/alumnos).
+  @Get('students/search')
+  @Roles(Role.ADMIN, Role.PROFESSOR)
+  searchStudents(@Query('q') q?: string) {
+    return this.usersService.searchStudents(q ?? '');
+  }
+
   @Patch(':id/active')
   setActive(
     @CurrentUser() user: AuthenticatedUser,
