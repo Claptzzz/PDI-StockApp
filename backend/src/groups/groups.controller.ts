@@ -17,6 +17,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CourseAccessGuard } from '../courses/course-access.guard';
+import { CourseOperateGuard } from '../courses/course-operate.guard';
 import { GroupsService } from './groups.service';
 import { MulterExceptionFilter } from './multer-exception.filter';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -26,21 +27,23 @@ import { AddMemberDto } from './dto/add-member.dto';
 const TWO_MB = 2 * 1024 * 1024;
 
 @Controller('courses/:courseId/groups')
-@UseGuards(CourseAccessGuard)
 export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 
   @Post()
+  @UseGuards(CourseAccessGuard)
   create(@Param('courseId') courseId: string, @Body() dto: CreateGroupDto) {
     return this.groupsService.create(courseId, dto.name);
   }
 
   @Get()
+  @UseGuards(CourseOperateGuard)
   list(@Param('courseId') courseId: string) {
     return this.groupsService.list(courseId);
   }
 
   @Post('import')
+  @UseGuards(CourseAccessGuard)
   @UseFilters(MulterExceptionFilter)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -63,11 +66,13 @@ export class GroupsController {
   }
 
   @Get(':groupId')
+  @UseGuards(CourseOperateGuard)
   getById(@Param('courseId') courseId: string, @Param('groupId') groupId: string) {
     return this.groupsService.getById(courseId, groupId);
   }
 
   @Patch(':groupId')
+  @UseGuards(CourseAccessGuard)
   rename(
     @Param('courseId') courseId: string,
     @Param('groupId') groupId: string,
@@ -77,12 +82,14 @@ export class GroupsController {
   }
 
   @Delete(':groupId')
+  @UseGuards(CourseAccessGuard)
   @HttpCode(HttpStatus.OK)
   remove(@Param('courseId') courseId: string, @Param('groupId') groupId: string) {
     return this.groupsService.remove(courseId, groupId);
   }
 
   @Post(':groupId/members')
+  @UseGuards(CourseAccessGuard)
   addMember(
     @Param('courseId') courseId: string,
     @Param('groupId') groupId: string,
@@ -92,6 +99,7 @@ export class GroupsController {
   }
 
   @Delete(':groupId/members/:studentId')
+  @UseGuards(CourseAccessGuard)
   @HttpCode(HttpStatus.OK)
   removeMember(
     @Param('courseId') courseId: string,

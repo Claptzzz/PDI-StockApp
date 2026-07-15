@@ -31,6 +31,7 @@ model User {
   groupMemberships GroupMember[]
   coursesTaught    CourseProfessor[]
   loansGiven       Loan[]            @relation("LoanGivenBy")
+  assistantRoles   CourseAssistant[] @relation("CourseAssistant")
 }
 
 model Course {
@@ -43,8 +44,21 @@ model Course {
   groups     Group[]
   professors CourseProfessor[]
   kits       Kit[]
+  assistants CourseAssistant[]
 
   @@unique([name, year, semester])
+}
+
+model CourseAssistant {
+  id          String   @id @default(cuid())
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String
+  assistant   User     @relation("CourseAssistant", fields: [assistantId], references: [id], onDelete: Cascade)
+  assistantId String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([courseId, assistantId])
 }
 
 model CourseProfessor {

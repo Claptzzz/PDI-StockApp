@@ -44,6 +44,74 @@ export class StudentService {
       );
   }
 
+  /** Cursos donde el usuario es ayudante ACTIVO. */
+  async listAssistantCourses(userId: string) {
+    const rows = await this.prisma.courseAssistant.findMany({
+      where: { assistantId: userId, active: true },
+      include: { course: true },
+      orderBy: [{ course: { year: 'desc' } }, { course: { semester: 'desc' } }],
+    });
+    return rows.map((r) => ({
+      course: {
+        id: r.course.id,
+        name: r.course.name,
+        year: r.course.year,
+        semester: r.course.semester,
+      },
+    }));
+  }
+
+  /**
+   * Contextos del usuario: cursos donde es ayudante activo (hatType ASSISTANT) y
+   * cursos donde es miembro de un grupo (hatType STUDENT). ASSISTANT tiene prioridad
+   * si un curso apareciera en ambos. Ordena por año y semestre desc.
+   */
+  async getContexts(userId: string) {
+    const [assistant, memberships] = await Promise.all([
+      this.prisma.courseAssistant.findMany({
+        where: { assistantId: userId, active: true },
+        include: { course: true },
+      }),
+      this.prisma.groupMember.findMany({
+        where: { studentId: userId },
+        include: { group: { include: { course: true } } },
+      }),
+    ]);
+
+    type Context = {
+      courseId: string;
+      courseName: string;
+      year: number;
+      semester: number;
+      hatType: 'ASSISTANT' | 'STUDENT';
+    };
+    const map = new Map<string, Context>();
+
+    for (const a of assistant) {
+      map.set(a.course.id, {
+        courseId: a.course.id,
+        courseName: a.course.name,
+        year: a.course.year,
+        semester: a.course.semester,
+        hatType: 'ASSISTANT',
+      });
+    }
+    for (const m of memberships) {
+      const c = m.group.course;
+      if (!map.has(c.id)) {
+        map.set(c.id, {
+          courseId: c.id,
+          courseName: c.name,
+          year: c.year,
+          semester: c.semester,
+          hatType: 'STUDENT',
+        });
+      }
+    }
+
+    return [...map.values()].sort((a, b) => b.year - a.year || b.semester - a.semester);
+  }
+
   /** Detalle de un grupo del alumno. Valida que sea miembro (si no, 403). */
   async getMyGroup(studentId: string, groupId: string) {
     const membership = await this.prisma.groupMember.findUnique({

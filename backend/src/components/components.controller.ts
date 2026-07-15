@@ -9,9 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CatalogReadGuard } from '../auth/guards/catalog-read.guard';
 import { ComponentsService } from './components.service';
 import { CreateComponentDto } from './dto/create-component.dto';
 import { UpdateComponentDto } from './dto/update-component.dto';
@@ -27,13 +29,13 @@ export class ComponentsController {
   }
 
   @Get()
-  @Roles(Role.ADMIN, Role.PROFESSOR)
+  @UseGuards(CatalogReadGuard)
   list(@Query('search') search?: string) {
     return this.componentsService.list(search);
   }
 
   @Get(':id')
-  @Roles(Role.ADMIN, Role.PROFESSOR)
+  @UseGuards(CatalogReadGuard)
   getById(@Param('id') id: string) {
     return this.componentsService.getById(id);
   }
