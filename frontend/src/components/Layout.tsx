@@ -12,6 +12,7 @@ interface NavItem {
 // ADMIN tiene enlaces reales; profesor/estudiante quedan como placeholders (Fase 4c/4d).
 const NAV_ITEMS: Record<Role, NavItem[]> = {
   ADMIN: [
+    { label: 'Métricas', to: '/admin/metricas' },
     { label: 'Cuentas', to: '/admin/cuentas' },
     { label: 'Cursos', to: '/admin/cursos' },
     { label: 'Bodega', to: '/admin/bodega' },
