@@ -140,6 +140,44 @@ export interface Loan {
 
 // --- Resumen de devoluciones ---
 
+// --- Vista de estudiante (endpoints /me) ---
+
+export interface MyGroupSummary {
+  groupId: string;
+  groupName: string;
+  course: { id: string; name: string; year: number; semester: number };
+  memberCount: number;
+}
+
+export interface MyGroupDetail {
+  groupId: string;
+  groupName: string;
+  course: { id: string; name: string; year: number; semester: number };
+  members: Member[];
+  kits: {
+    id: string;
+    code: string;
+    status: KitStatus;
+    items: {
+      componentName: string;
+      quantity: number;
+      returnedQuantity: number;
+      pending: number;
+    }[];
+  }[];
+  loans: {
+    id: string;
+    componentName: string;
+    quantity: number;
+    returnedQuantity: number;
+    pending: number;
+    status: LoanStatus;
+    note: string | null;
+    signedUrl: string | null;
+  }[];
+  allReturned: boolean;
+}
+
 export interface ReturnsSummary {
   groupId: string;
   allReturned: boolean;
