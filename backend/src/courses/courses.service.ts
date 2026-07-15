@@ -29,15 +29,19 @@ function nameFromEmail(email: string): string {
 @Injectable()
 export class CoursesService {
   private readonly adminEmails: string[];
+  private readonly professorEmails: string[];
 
   constructor(
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
-    this.adminEmails = (config.get<string>('ADMIN_EMAILS') ?? '')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean);
+    const parse = (raw: string | undefined) =>
+      (raw ?? '')
+        .split(',')
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean);
+    this.adminEmails = parse(config.get<string>('ADMIN_EMAILS'));
+    this.professorEmails = parse(config.get<string>('PROFESSOR_EMAILS'));
   }
 
   // --- Acceso ------------------------------------------------------------
@@ -200,7 +204,7 @@ export class CoursesService {
     await this.ensureCourseExists(courseId);
 
     const normalizedEmail = email.trim().toLowerCase();
-    const derivedRole = resolveRole(normalizedEmail, this.adminEmails);
+    const derivedRole = resolveRole(normalizedEmail, this.adminEmails, this.professorEmails);
 
     // Solo dominios de profesor (o un admin) pueden gestionar cursos.
     if (derivedRole === Role.STUDENT || derivedRole === null) {

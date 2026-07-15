@@ -3,7 +3,10 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { RoleRoute } from '@/components/RoleRoute';
 import { Layout } from '@/components/Layout';
 import Login from '@/pages/Login';
-import { AdminDashboard, EstudianteDashboard, ProfesorDashboard } from '@/pages/Dashboards';
+import { EstudianteDashboard, ProfesorDashboard } from '@/pages/Dashboards';
+import { AccountsPage } from '@/pages/admin/AccountsPage';
+import { CoursesPage } from '@/pages/admin/CoursesPage';
+import { WarehousePage } from '@/pages/admin/WarehousePage';
 import { useAuth } from '@/store/auth';
 import { dashboardPath } from '@/lib/types';
 
@@ -20,14 +23,14 @@ function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
           <Route path="/" element={<RootRedirect />} />
-          <Route
-            path="/admin"
-            element={
-              <RoleRoute roles={['ADMIN']}>
-                <AdminDashboard />
-              </RoleRoute>
-            }
-          />
+
+          <Route path="/admin" element={<RoleRoute roles={['ADMIN']} />}>
+            <Route index element={<Navigate to="/admin/cuentas" replace />} />
+            <Route path="cuentas" element={<AccountsPage />} />
+            <Route path="cursos" element={<CoursesPage />} />
+            <Route path="bodega" element={<WarehousePage />} />
+          </Route>
+
           <Route
             path="/profesor"
             element={

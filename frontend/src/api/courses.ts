@@ -1,0 +1,78 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import type { Course, CourseProfessor } from '@/lib/apiTypes';
+
+export interface CourseInput {
+  name: string;
+  year: number;
+  semester: number;
+}
+
+export function useCourses() {
+  return useQuery({
+    queryKey: ['courses'],
+    queryFn: async () => (await api.get<Course[]>('/courses')).data,
+  });
+}
+
+export function useCreateCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CourseInput) => (await api.post<Course>('/courses', input)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['courses'] }),
+  });
+}
+
+export function useUpdateCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: Partial<CourseInput> }) =>
+      (await api.patch<Course>(`/courses/${id}`, input)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['courses'] }),
+  });
+}
+
+export function useDeleteCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await api.delete(`/courses/${id}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['courses'] }),
+  });
+}
+
+// --- Profesores del curso ---
+
+export function useCourseProfessors(courseId: string | null) {
+  return useQuery({
+    queryKey: ['course-professors', courseId],
+    enabled: Boolean(courseId),
+    queryFn: async () => (await api.get<CourseProfessor[]>(`/courses/${courseId}/professors`)).data,
+  });
+}
+
+export function useAddProfessor(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (email: string) =>
+      (await api.post(`/courses/${courseId}/professors`, { email })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-professors', courseId] }),
+  });
+}
+
+export function useSetProfessorAuthorized(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ professorId, authorized }: { professorId: string; authorized: boolean }) =>
+      (await api.patch(`/courses/${courseId}/professors/${professorId}`, { authorized })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-professors', courseId] }),
+  });
+}
+
+export function useRemoveProfessor(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (professorId: string) =>
+      (await api.delete(`/courses/${courseId}/professors/${professorId}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-professors', courseId] }),
+  });
+}
