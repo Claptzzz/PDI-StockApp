@@ -3,13 +3,13 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { RoleRoute } from '@/components/RoleRoute';
 import { Layout } from '@/components/Layout';
 import Login from '@/pages/Login';
-import { EstudianteDashboard } from '@/pages/Dashboards';
 import { AccountsPage } from '@/pages/admin/AccountsPage';
 import { CoursesPage } from '@/pages/admin/CoursesPage';
 import { WarehousePage } from '@/pages/admin/WarehousePage';
 import { ProfesorCoursesPage } from '@/pages/profesor/CoursesPage';
 import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
 import { GroupPage } from '@/pages/profesor/GroupPage';
+import { StudentPage } from '@/pages/estudiante/StudentPage';
 import { useAuth } from '@/store/auth';
 import { dashboardPath } from '@/lib/types';
 
@@ -44,7 +44,7 @@ function App() {
             path="/estudiante"
             element={
               <RoleRoute roles={['STUDENT']}>
-                <EstudianteDashboard />
+                <StudentPage />
               </RoleRoute>
             }
           />

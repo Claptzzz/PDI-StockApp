@@ -17,7 +17,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { label: 'Bodega', to: '/admin/bodega' },
   ],
   PROFESSOR: [{ label: 'Cursos', to: '/profesor/cursos' }],
-  STUDENT: [{ label: 'Mi grupo' }],
+  STUDENT: [{ label: 'Mi grupo', to: '/estudiante' }],
 };
 
 export function Layout() {
