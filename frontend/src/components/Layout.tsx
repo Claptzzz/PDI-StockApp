@@ -16,7 +16,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
     { label: 'Cursos', to: '/admin/cursos' },
     { label: 'Bodega', to: '/admin/bodega' },
   ],
-  PROFESSOR: [{ label: 'Cursos' }],
+  PROFESSOR: [{ label: 'Cursos', to: '/profesor/cursos' }],
   STUDENT: [{ label: 'Mi grupo' }],
 };
 
