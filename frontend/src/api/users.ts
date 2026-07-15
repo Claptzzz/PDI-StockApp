@@ -18,6 +18,22 @@ export function useUsers(filter: UsersFilter) {
   });
 }
 
+/** Busca profesores registrados por nombre/correo (para el autocompletado). */
+export function useSearchProfessors(search: string) {
+  const term = search.trim();
+  return useQuery({
+    queryKey: ['users', 'professor-search', term],
+    enabled: term.length >= 2,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data } = await api.get<UserAccount[]>('/users', {
+        params: { role: 'PROFESSOR', search: term },
+      });
+      return data;
+    },
+  });
+}
+
 export function useSetUserActive() {
   const qc = useQueryClient();
   return useMutation({

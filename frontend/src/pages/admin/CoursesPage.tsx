@@ -5,7 +5,6 @@ import {
   useUpdateCourse,
   useDeleteCourse,
   useCourseProfessors,
-  useAddProfessor,
   useSetProfessorAuthorized,
   useRemoveProfessor,
   type CourseInput,
@@ -20,6 +19,7 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ProfessorPicker } from '@/components/ui/ProfessorPicker';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 interface CourseFormState {
@@ -233,24 +233,10 @@ export function CoursesPage() {
 function ProfessorsPanel({ course, onClose }: { course: Course; onClose: () => void }) {
   const toast = useToast();
   const query = useCourseProfessors(course.id);
-  const addProfessor = useAddProfessor(course.id);
   const setAuthorized = useSetProfessorAuthorized(course.id);
   const removeProfessor = useRemoveProfessor(course.id);
 
-  const [email, setEmail] = useState('');
   const [removing, setRemoving] = useState<CourseProfessor | null>(null);
-
-  const submitAdd = () => {
-    const value = email.trim().toLowerCase();
-    if (!value) return;
-    addProfessor.mutate(value, {
-      onSuccess: () => {
-        toast.success('Profesor agregado.');
-        setEmail('');
-      },
-      onError: (err) => toast.error(getApiErrorMessage(err)),
-    });
-  };
 
   const toggle = (cp: CourseProfessor) => {
     setAuthorized.mutate(
@@ -292,19 +278,8 @@ function ProfessorsPanel({ course, onClose }: { course: Course; onClose: () => v
         </button>
       </div>
 
-      <div className="mt-4 flex items-end gap-2">
-        <div className="flex-1">
-          <Input
-            label="Agregar profesor (correo institucional)"
-            placeholder="profesor@ucn.cl"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitAdd()}
-          />
-        </div>
-        <Button onClick={submitAdd} disabled={addProfessor.isPending}>
-          Agregar
-        </Button>
+      <div className="mt-4">
+        <ProfessorPicker courseId={course.id} assigned={query.data ?? []} />
       </div>
 
       <div className="mt-4">
