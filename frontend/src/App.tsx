@@ -3,10 +3,13 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { RoleRoute } from '@/components/RoleRoute';
 import { Layout } from '@/components/Layout';
 import Login from '@/pages/Login';
-import { EstudianteDashboard, ProfesorDashboard } from '@/pages/Dashboards';
+import { EstudianteDashboard } from '@/pages/Dashboards';
 import { AccountsPage } from '@/pages/admin/AccountsPage';
 import { CoursesPage } from '@/pages/admin/CoursesPage';
 import { WarehousePage } from '@/pages/admin/WarehousePage';
+import { ProfesorCoursesPage } from '@/pages/profesor/CoursesPage';
+import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
+import { GroupPage } from '@/pages/profesor/GroupPage';
 import { useAuth } from '@/store/auth';
 import { dashboardPath } from '@/lib/types';
 
@@ -31,14 +34,12 @@ function App() {
             <Route path="bodega" element={<WarehousePage />} />
           </Route>
 
-          <Route
-            path="/profesor"
-            element={
-              <RoleRoute roles={['PROFESSOR']}>
-                <ProfesorDashboard />
-              </RoleRoute>
-            }
-          />
+          <Route path="/profesor" element={<RoleRoute roles={['PROFESSOR']} />}>
+            <Route index element={<Navigate to="/profesor/cursos" replace />} />
+            <Route path="cursos" element={<ProfesorCoursesPage />} />
+            <Route path="cursos/:courseId" element={<CourseDetailPage />} />
+            <Route path="cursos/:courseId/grupos/:groupId" element={<GroupPage />} />
+          </Route>
           <Route
             path="/estudiante"
             element={

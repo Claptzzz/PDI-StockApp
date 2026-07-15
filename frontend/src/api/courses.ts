@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Course, CourseProfessor } from '@/lib/apiTypes';
+import type { Course, CourseProfessor, Term } from '@/lib/apiTypes';
 
 export interface CourseInput {
   name: string;
@@ -8,10 +8,24 @@ export interface CourseInput {
   semester: number;
 }
 
-export function useCourses() {
+export function useCourses(params?: { year?: number; semester?: number }) {
   return useQuery({
-    queryKey: ['courses'],
-    queryFn: async () => (await api.get<Course[]>('/courses')).data,
+    queryKey: ['courses', params ?? {}],
+    queryFn: async () => (await api.get<Course[]>('/courses', { params })).data,
+  });
+}
+
+export function useTerms() {
+  return useQuery({
+    queryKey: ['courses', 'terms'],
+    queryFn: async () => (await api.get<Term[]>('/courses/terms')).data,
+  });
+}
+
+export function useCourse(courseId: string) {
+  return useQuery({
+    queryKey: ['course', courseId],
+    queryFn: async () => (await api.get<Course>(`/courses/${courseId}`)).data,
   });
 }
 
