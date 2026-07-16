@@ -23,6 +23,29 @@ export interface Term {
   semester: number;
 }
 
+export interface CourseAssistant {
+  assistantId: string;
+  active: boolean;
+  createdAt?: string;
+  assistant: { id: string; email: string; name: string };
+}
+
+export interface StudentSearchResult {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export type HatType = 'ASSISTANT' | 'STUDENT';
+
+export interface MyContext {
+  courseId: string;
+  courseName: string;
+  year: number;
+  semester: number;
+  hatType: HatType;
+}
+
 export interface CourseProfessor {
   professorId: string;
   authorized: boolean;

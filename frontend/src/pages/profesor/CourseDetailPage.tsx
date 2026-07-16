@@ -17,6 +17,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
+import { AssistantsSection } from './AssistantsSection';
 
 export function CourseDetailPage() {
   const { courseId = '' } = useParams();
@@ -154,6 +155,8 @@ export function CourseDetailPage() {
           <EmptyState message="Aún no hay grupos. Crea uno o importa un CSV." />
         )}
       </div>
+
+      <AssistantsSection courseId={courseId} />
 
       <Modal
         open={formOpen}

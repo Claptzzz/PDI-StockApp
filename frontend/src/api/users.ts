@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { UserAccount } from '@/lib/apiTypes';
+import type { StudentSearchResult, UserAccount } from '@/lib/apiTypes';
 import type { Role } from '@/lib/types';
 
 export interface UsersFilter {
@@ -28,6 +28,22 @@ export function useSearchProfessors(search: string) {
     queryFn: async () => {
       const { data } = await api.get<UserAccount[]>('/users', {
         params: { role: 'PROFESSOR', search: term },
+      });
+      return data;
+    },
+  });
+}
+
+/** Busca alumnos por nombre/correo (para el combobox de ayudantes). */
+export function useSearchStudents(search: string) {
+  const term = search.trim();
+  return useQuery({
+    queryKey: ['users', 'student-search', term],
+    enabled: term.length >= 2,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data } = await api.get<StudentSearchResult[]>('/users/students/search', {
+        params: { q: term },
       });
       return data;
     },
