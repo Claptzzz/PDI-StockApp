@@ -1,6 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { MyGroupDetail, MyGroupSummary } from '@/lib/apiTypes';
+import type { MyContext, MyGroupDetail, MyGroupSummary } from '@/lib/apiTypes';
+
+export function useMyContexts(enabled = true) {
+  return useQuery({
+    queryKey: ['me', 'contexts'],
+    enabled,
+    queryFn: async () => (await api.get<MyContext[]>('/me/contexts')).data,
+  });
+}
 
 export function useMyGroups() {
   return useQuery({

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/store/auth';
+import { useMyContexts } from '@/api/student';
 import { roleLabel, type Role } from '@/lib/types';
 import { Toaster } from '@/components/ui/Toaster';
 import ucnLogo from '@/assets/UCN_y_texto.png';
@@ -23,7 +24,14 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
 
 export function Layout() {
   const { user, logout } = useAuth();
-  const items = user ? NAV_ITEMS[user.role] : [];
+  const contexts = useMyContexts(user?.role === 'STUDENT');
+  const hasAssistant = (contexts.data ?? []).some((c) => c.hatType === 'ASSISTANT');
+
+  const items: NavItem[] = !user
+    ? []
+    : user.role === 'STUDENT'
+      ? [{ label: hasAssistant ? 'Mis cursos' : 'Mi grupo', to: '/estudiante' }]
+      : NAV_ITEMS[user.role];
 
   return (
     <div className="flex min-h-screen">

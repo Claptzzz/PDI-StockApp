@@ -9,7 +9,15 @@ import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
-export function MembersSection({ courseId, groupId }: { courseId: string; groupId: string }) {
+export function MembersSection({
+  courseId,
+  groupId,
+  canManage = true,
+}: {
+  courseId: string;
+  groupId: string;
+  canManage?: boolean;
+}) {
   const toast = useToast();
   const group = useGroup(courseId, groupId);
   const addMember = useAddMember(courseId, groupId);
@@ -46,22 +54,24 @@ export function MembersSection({ courseId, groupId }: { courseId: string; groupI
 
   return (
     <div>
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
-          <Input
-            label="Agregar integrante (correo @alumnos.ucn.cl)"
-            placeholder="ana.torres@alumnos.ucn.cl"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitAdd()}
-          />
+      {canManage && (
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              label="Agregar integrante (correo @alumnos.ucn.cl)"
+              placeholder="ana.torres@alumnos.ucn.cl"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitAdd()}
+            />
+          </div>
+          <Button onClick={submitAdd} disabled={addMember.isPending}>
+            Agregar
+          </Button>
         </div>
-        <Button onClick={submitAdd} disabled={addMember.isPending}>
-          Agregar
-        </Button>
-      </div>
+      )}
 
-      <div className="mt-4">
+      <div className={canManage ? 'mt-4' : ''}>
         {group.isLoading ? (
           <Loading />
         ) : group.isError ? (
@@ -72,7 +82,7 @@ export function MembersSection({ courseId, groupId }: { courseId: string; groupI
               <tr>
                 <Th>Nombre</Th>
                 <Th>Correo</Th>
-                <Th className="text-right">Acción</Th>
+                {canManage && <Th className="text-right">Acción</Th>}
               </tr>
             </thead>
             <tbody>
@@ -80,11 +90,13 @@ export function MembersSection({ courseId, groupId }: { courseId: string; groupI
                 <tr key={m.id}>
                   <Td className="font-semibold">{m.name}</Td>
                   <Td className="text-text-secondary">{m.email}</Td>
-                  <Td className="text-right">
-                    <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>
-                      Quitar
-                    </Button>
-                  </Td>
+                  {canManage && (
+                    <Td className="text-right">
+                      <Button size="sm" variant="ghost" onClick={() => setRemoving(m)}>
+                        Quitar
+                      </Button>
+                    </Td>
+                  )}
                 </tr>
               ))}
             </tbody>

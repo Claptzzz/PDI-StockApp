@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Course, CourseProfessor, Term } from '@/lib/apiTypes';
+import type { Course, CourseAssistant, CourseProfessor, Term } from '@/lib/apiTypes';
 
 export interface CourseInput {
   name: string;
@@ -88,5 +88,41 @@ export function useRemoveProfessor(courseId: string) {
     mutationFn: async (professorId: string) =>
       (await api.delete(`/courses/${courseId}/professors/${professorId}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['course-professors', courseId] }),
+  });
+}
+
+// --- Ayudantes del curso ---
+
+export function useCourseAssistants(courseId: string) {
+  return useQuery({
+    queryKey: ['course-assistants', courseId],
+    queryFn: async () => (await api.get<CourseAssistant[]>(`/courses/${courseId}/assistants`)).data,
+  });
+}
+
+export function useAddAssistant(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (email: string) =>
+      (await api.post(`/courses/${courseId}/assistants`, { email })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-assistants', courseId] }),
+  });
+}
+
+export function useSetAssistantActive(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ assistantId, active }: { assistantId: string; active: boolean }) =>
+      (await api.patch(`/courses/${courseId}/assistants/${assistantId}`, { active })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-assistants', courseId] }),
+  });
+}
+
+export function useRemoveAssistant(courseId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (assistantId: string) =>
+      (await api.delete(`/courses/${courseId}/assistants/${assistantId}`)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course-assistants', courseId] }),
   });
 }

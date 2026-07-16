@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth';
+import { queryClient } from '@/lib/queryClient';
 
 /**
  * Cliente HTTP base para la API del backend.
@@ -36,6 +37,12 @@ api.interceptors.response.use(
         if (window.location.pathname !== '/login') {
           window.location.assign('/login');
         }
+      }
+
+      // Un 403 puede deberse a un contexto desincronizado (p.ej. ayudante desactivado):
+      // refresca /me/contexts para que el dashboard del estudiante se reacomode.
+      if (status === 403) {
+        void queryClient.invalidateQueries({ queryKey: ['me', 'contexts'] });
       }
     }
     return Promise.reject(error);
