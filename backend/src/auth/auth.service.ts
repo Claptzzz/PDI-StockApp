@@ -14,7 +14,6 @@ export interface GoogleLoginResult {
 
 @Injectable()
 export class AuthService {
-  // TODO: [AUTH_DEBUG] logging temporal para diagnosticar el 401 — quitar después.
   private readonly logger = new Logger(AuthService.name);
   private readonly oauthClient: OAuth2Client;
   private readonly googleClientId: string;
@@ -37,26 +36,16 @@ export class AuthService {
 
     const email = payload.email?.trim().toLowerCase();
     if (!email || payload.email_verified !== true) {
-      this.logger.error(
-        `[AUTH_DEBUG] RECHAZO 401 email_verified: email=${String(email)} · email_verified=${String(payload.email_verified)}`,
-      );
       throw new UnauthorizedException('El correo de Google no está verificado');
     }
     const name = payload.name?.trim() || email;
 
     const derivedRole = resolveRole(email, this.adminEmails, this.professorEmails);
-    this.logger.error(
-      `[AUTH_DEBUG] resolveRole(${email}) = ${String(derivedRole)} · adminEmails=${JSON.stringify(this.adminEmails)} · professorEmails=${JSON.stringify(this.professorEmails)}`,
-    );
     if (derivedRole === null) {
-      this.logger.error(`[AUTH_DEBUG] RECHAZO 403 dominio no reconocido para email=${email}`);
       throw new ForbiddenException('Correo institucional no válido');
     }
 
     const user = await this.linkOrCreateUser(email, name, derivedRole, payload.sub);
-    this.logger.error(
-      `[AUTH_DEBUG] LOGIN OK · userId=${user.id} · email=${user.email} · role=${user.role}`,
-    );
 
     const jwtPayload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
     const accessToken = await this.jwtService.signAsync(jwtPayload);
@@ -69,9 +58,6 @@ export class AuthService {
 
   /** Verifica el idToken contra Google. Cualquier fallo se traduce a 401. */
   private async verifyGoogleToken(idToken: string): Promise<TokenPayload> {
-    this.logger.error(
-      `[AUTH_DEBUG] verifyIdToken IN · idTokenLength=${idToken?.length ?? 0} · GOOGLE_CLIENT_ID(env)=${process.env.GOOGLE_CLIENT_ID ?? '(undefined)'} · audienceUsed=${this.googleClientId} · NODE_ENV=${process.env.NODE_ENV ?? '(undefined)'}`,
-    );
     try {
       const ticket = await this.oauthClient.verifyIdToken({
         idToken,
@@ -79,22 +65,15 @@ export class AuthService {
       });
       const payload = ticket.getPayload();
       if (!payload) {
-        this.logger.error('[AUTH_DEBUG] verifyIdToken OK pero getPayload() devolvió vacío');
         throw new UnauthorizedException('idToken de Google inválido');
       }
-      this.logger.error(
-        `[AUTH_DEBUG] verify OK · email=${payload.email} · aud=${JSON.stringify(payload.aud)} · iss=${payload.iss} · email_verified=${String(payload.email_verified)} · sub=${payload.sub} · exp=${payload.exp} · now=${Math.floor(Date.now() / 1000)}`,
-      );
       return payload;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;
       }
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[AUTH_DEBUG] verifyIdToken LANZÓ excepción: ${message}`);
-      if (error instanceof Error && error.stack) {
-        this.logger.error(`[AUTH_DEBUG] stack: ${error.stack}`);
-      }
+      this.logger.warn(`Google idToken inválido: ${message}`);
       throw new UnauthorizedException('idToken de Google inválido');
     }
   }
@@ -116,9 +95,6 @@ export class AuthService {
 
     if (existing) {
       if (!existing.isActive) {
-        this.logger.error(
-          `[AUTH_DEBUG] RECHAZO 403 cuenta deshabilitada · userId=${existing.id} · email=${email}`,
-        );
         throw new ForbiddenException('Cuenta deshabilitada');
       }
 
