@@ -275,9 +275,10 @@ function CreateLoanModal({
           <span className="text-sm font-semibold text-text-secondary">Foto (opcional)</span>
           <input
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/*"
+            capture="environment"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-text-secondary file:mr-3 file:rounded-[var(--radius)] file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-semibold file:text-text-on-primary"
+            className="w-full text-sm text-text-secondary file:mr-3 file:min-h-[44px] file:rounded-[var(--radius)] file:border-0 file:bg-primary file:px-4 file:text-sm file:font-semibold file:text-text-on-primary"
           />
           {previewUrl && (
             <img

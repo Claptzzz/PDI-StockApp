@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import axios from 'axios';
@@ -18,37 +18,48 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSuccess = async (credentialResponse: CredentialResponse) => {
-    const idToken = credentialResponse.credential;
-    if (!idToken) {
-      setError('No se recibió el token de Google. Intenta nuevamente.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.post<GoogleLoginResponse>('/auth/google', { idToken });
-      setSession(data.accessToken, data.user);
-      navigate(dashboardPath(data.user.role), { replace: true });
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const status = err.response?.status;
-        const backendMsg = (err.response?.data as { message?: string } | undefined)?.message;
-        if (status === 403) {
-          setError(backendMsg ?? 'Tu cuenta no está habilitada o el correo no es institucional.');
-        } else if (status === 401) {
-          setError(backendMsg ?? 'No se pudo verificar tu identidad con Google.');
-        } else {
-          setError('Ocurrió un error al iniciar sesión. Intenta nuevamente.');
-        }
-      } else {
-        setError('Ocurrió un error inesperado.');
+  // Handlers memoizados: evita que <GoogleLogin> re-inicialice GSI en cada render.
+  const handleSuccess = useCallback(
+    async (credentialResponse: CredentialResponse) => {
+      const idToken = credentialResponse.credential;
+      // Con FedCM/COOP el credential puede venir vacío: no llamamos al backend con un token inválido.
+      if (!idToken) {
+        setError('No se recibió el token de Google. Refresca la página e intenta nuevamente.');
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      setLoading(true);
+      setError(null);
+      try {
+        const { data } = await api.post<GoogleLoginResponse>('/auth/google', { idToken });
+        setSession(data.accessToken, data.user);
+        navigate(dashboardPath(data.user.role), { replace: true });
+      } catch (err) {
+        if (axios.isAxiosError(err)) {
+          const status = err.response?.status;
+          const backendMsg = (err.response?.data as { message?: string } | undefined)?.message;
+          if (status === 403) {
+            setError(backendMsg ?? 'Tu cuenta no está habilitada o el correo no es institucional.');
+          } else if (status === 401) {
+            setError(backendMsg ?? 'No se pudo verificar tu identidad con Google.');
+          } else {
+            setError('Ocurrió un error al iniciar sesión. Intenta nuevamente.');
+          }
+        } else {
+          setError('Ocurrió un error inesperado.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [navigate, setSession],
+  );
+
+  const handleError = useCallback(() => {
+    // El SDK no entrega detalle del error; dejamos rastro para depurar (COOP/FedCM, popup bloqueado, etc.).
+    console.error('[GoogleLogin] onError: falló el flujo de Google Identity Services.');
+    setError('No se pudo iniciar sesión con Google. Revisa el bloqueo de ventanas emergentes e intenta de nuevo.');
+  }, []);
 
   return (
     <div className="grid min-h-screen place-items-center bg-surface-page px-4">
@@ -73,17 +84,16 @@ export function Login() {
               </div>
             )}
 
-            <div className="flex min-h-[44px] items-center justify-center">
-              {loading ? (
-                <span className="text-sm text-text-muted">Verificando…</span>
-              ) : (
+            <div className="flex min-h-[44px] w-full flex-col items-center justify-center gap-2">
+              {loading && <span className="text-sm text-text-muted">Verificando…</span>}
+              <div className={loading ? 'pointer-events-none opacity-50' : undefined}>
                 <GoogleLogin
                   onSuccess={handleSuccess}
-                  onError={() => setError('No se pudo iniciar sesión con Google.')}
+                  onError={handleError}
                   shape="rectangular"
                   text="signin_with"
                 />
-              )}
+              </div>
             </div>
           </div>
         </div>

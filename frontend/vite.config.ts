@@ -11,5 +11,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  server: { port: 5174, strictPort: true },
+  server: { 
+    port: 5174, 
+    strictPort: true,
+     headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      'Cross-Origin-Embedder-Policy': 'unsafe-none',
+    },
+  },
 });

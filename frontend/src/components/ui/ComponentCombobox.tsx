@@ -82,7 +82,7 @@ export function ComponentCombobox({
         }}
         onFocus={() => value.trim().length >= 2 && setOpen(true)}
         onKeyDown={onKeyDown}
-        className="rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary"
+        className="min-h-[44px] rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary"
       />
       {showDropdown && (
         <ul
