@@ -1,0 +1,4 @@
+# Los scripts de shell deben mantener saltos de línea LF, incluso en Windows,
+# o el shebang del entrypoint del contenedor se rompe.
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
