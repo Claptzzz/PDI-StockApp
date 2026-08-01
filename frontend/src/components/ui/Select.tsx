@@ -14,7 +14,7 @@ export function Select({ label, className = '', id, children, ...props }: Select
       )}
       <select
         id={id}
-        className={`rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary ${className}`}
+        className={`min-h-[44px] rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary ${className}`}
         {...props}
       >
         {children}

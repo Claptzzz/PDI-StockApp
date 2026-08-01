@@ -145,7 +145,7 @@ export function AssistantPicker({ courseId, assigned }: AssistantPickerProps) {
           }}
           onFocus={() => query.trim().length >= 2 && setOpen(true)}
           onKeyDown={onKeyDown}
-          className="mt-1 w-full rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary"
+          className="mt-1 min-h-[44px] w-full rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none transition-colors focus:border-primary"
         />
 
         {showDropdown && (
