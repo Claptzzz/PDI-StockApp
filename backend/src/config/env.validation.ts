@@ -37,6 +37,15 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   DATABASE_URL: string;
 
+  /**
+   * Conexión directa a la DB (sin pooler) para las migraciones. Opcional: si no está,
+   * Prisma usa DATABASE_URL. Necesaria en prod si la DB va detrás de un pooler
+   * (Neon/Supabase/pgBouncer).
+   */
+  @IsOptional()
+  @IsString()
+  DIRECT_URL?: string;
+
   @IsString()
   @MinLength(16, { message: 'JWT_SECRET debe tener al menos 16 caracteres' })
   JWT_SECRET: string;
@@ -70,6 +79,14 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   SUPABASE_BUCKET: string;
+
+  /**
+   * Origen(es) permitido(s) para CORS. Puede ser una lista separada por comas
+   * (dominio de prod + localhost). Requerido: el arranque falla si falta.
+   */
+  @IsString()
+  @IsNotEmpty()
+  FRONTEND_ORIGIN: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
