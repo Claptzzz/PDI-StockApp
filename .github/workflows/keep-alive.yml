@@ -1,0 +1,40 @@
+# Keep-alive de Supabase — el proyecto free se pausa tras ~1 semana de inactividad.
+# Hace una petición ligera cada 3 días para registrar actividad. NUNCA falla el workflow
+# (solo avisa) para no llenar de alertas de correo.
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # A las 12:00 UTC cada 3 días.
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase Storage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Listar buckets (actividad ligera)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::warning::Faltan secrets SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY; se omite el ping."
+            exit 0
+          fi
+          # Endpoint REST de Storage que lista los buckets del proyecto.
+          url="${SUPABASE_URL%/}/storage/v1/bucket"
+          code=$(curl -s -o /tmp/resp.txt -w '%{http_code}' --max-time 20 \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            "$url" || echo "000")
+          echo "HTTP $code"
+          echo "Respuesta: $(head -c 300 /tmp/resp.txt)"
+          if [ "$code" = "200" ]; then
+            echo "✅ Supabase respondió OK; actividad registrada."
+          else
+            echo "::warning::Supabase no devolvió 200 (fue $code). No se falla el workflow a propósito."
+          fi
+          # Siempre salir 0: este workflow no debe romper por una respuesta no-200.
+          exit 0
