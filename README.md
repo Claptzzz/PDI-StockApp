@@ -133,6 +133,44 @@ docker compose down -v
 
 > No pongas valores reales en `.env.example`; son solo plantillas.
 
+## CI/CD
+
+Los pipelines viven en [.github/workflows/](.github/workflows/). Metodología: **Trunk
+Based Development** — ramas de vida corta que se integran a `main` vía PR.
+
+### Workflows
+
+| Workflow                 | Se dispara                                            | Qué hace                                                                                                        |
+| ------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| **ci.yml**               | `pull_request` → `main` y `push` a `main`             | Quality gate. Jobs `backend` y `frontend` en paralelo: `npm ci`, lint y build (backend además `prisma generate`). Si falla, no se mergea. |
+| **deploy-backend.yml**   | `push` a `main` + `workflow_dispatch` (manual)        | Construye la imagen del backend, la publica en GHCR (`latest` + `sha`) y la despliega en Azure App Service. Termina con un smoke test a `/health`. |
+| **keep-alive.yml**       | `cron` cada 3 días + `workflow_dispatch`              | Hace un ping ligero a Supabase Storage para que el proyecto free no se pause por inactividad. No falla si la respuesta no es 200. |
+
+> **Frontend:** Vercel despliega automáticamente en cada push a `main` (integración
+> propia de Vercel). El pipeline **no** hace deploy del frontend; solo lo verifica en CI.
+
+### Flujo TBD
+
+```
+rama corta  →  PR a main  →  ci.yml en verde  →  merge a main  →  deploy-backend.yml (auto)
+```
+
+### Secrets a crear en GitHub
+
+En **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret                         | Usado por            | Descripción                                                                       |
+| ------------------------------ | -------------------- | --------------------------------------------------------------------------------- |
+| `AZURE_WEBAPP_PUBLISH_PROFILE` | deploy-backend.yml   | Publish profile del App Service **PDI-Stock** (XML descargado desde Azure).       |
+| `VITE_API_URL`                 | ci.yml (frontend)    | URL base del backend para el build de CI (con dummy fallback si falta).           |
+| `VITE_GOOGLE_CLIENT_ID`        | ci.yml (frontend)    | Google Client ID para el build de CI (con dummy fallback si falta).               |
+| `SUPABASE_URL`                 | keep-alive.yml       | URL del proyecto Supabase (`https://xxxx.supabase.co`).                            |
+| `SUPABASE_SERVICE_ROLE_KEY`    | keep-alive.yml       | Service role key de Supabase.                                                      |
+
+> `GITHUB_TOKEN` lo provee Actions automáticamente (login a GHCR); no hay que crearlo.
+> Los secrets de **runtime** del backend (DATABASE_URL, JWT_SECRET, etc.) se configuran
+> en el **App Service**, no en GitHub.
+
 ## Deploy
 
 ### Backend (contenedor)
