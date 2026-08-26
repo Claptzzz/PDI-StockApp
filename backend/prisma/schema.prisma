@@ -101,6 +101,8 @@ model GroupMember {
 model Component {
   id          String   @id @default(cuid())
   name        String   @unique
+  /// Codigo interno del componente. Opcional, pero unico cuando existe.
+  code        String?  @unique
   description String?
   totalStock  Int      @default(0)
   createdAt   DateTime @default(now())
@@ -108,6 +110,17 @@ model Component {
   kitTemplateItems KitTemplateItem[]
   kitItems         KitItem[]
   loans            Loan[]
+  tags             Tag[]
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  /// Color hex opcional para pintar la etiqueta en la UI (ej. "#166499").
+  color     String?
+  createdAt DateTime @default(now())
+
+  components Component[]
 }
 
 model KitTemplate {

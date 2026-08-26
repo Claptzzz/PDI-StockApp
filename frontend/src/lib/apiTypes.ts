@@ -59,12 +59,29 @@ export interface CourseProfessor {
   };
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: string;
+  componentsCount: number;
+}
+
+/** Etiqueta tal como viene embebida en un componente (sin conteo ni fecha). */
+export interface TagRef {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
 export interface Component {
   id: string;
   name: string;
+  code: string | null;
   description: string | null;
   totalStock: number;
   available: number;
+  tags: TagRef[];
 }
 
 export interface ComponentDetail extends Component {
@@ -178,6 +195,8 @@ export interface MetricsOverview {
 export interface StockRow {
   id: string;
   name: string;
+  code: string | null;
+  tags: TagRef[];
   totalStock: number;
   committedInKits: number;
   committedInLoans: number;
