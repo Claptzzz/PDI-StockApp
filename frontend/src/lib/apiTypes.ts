@@ -136,6 +136,26 @@ export interface KitItem {
   quantity: number;
   returnedQuantity: number;
   pending: number;
+  /** "Recibido conforme" marcado por el alumno en la verificación de entrega. */
+  verified: boolean;
+  /** Discrepancia reportada por el alumno; se registra, no ajusta cantidades. */
+  verificationNote: string | null;
+}
+
+/** Estado de aceptación de condiciones de un integrante del grupo. */
+export interface KitAcceptanceMember {
+  studentId: string;
+  name: string;
+  accepted: boolean;
+  acceptedAt: string | null;
+}
+
+export interface KitAcceptanceSummary {
+  accepted: number;
+  total: number;
+  /** Nombres de quienes aún no aceptan. */
+  pending: string[];
+  members: KitAcceptanceMember[];
 }
 
 export interface Kit {
@@ -149,6 +169,18 @@ export interface Kit {
   returnedAt: string | null;
   itemCount: number;
   items: KitItem[];
+
+  // --- Verificación de entrega (Fase 9b) ---
+  isVerified: boolean;
+  verifiedAt: string | null;
+  hasDiscrepancies: boolean;
+  /** Formato "2/3". */
+  acceptanceStatus: string;
+  allAccepted: boolean;
+  /** Solo en el detalle (GET .../kits/:kitId). */
+  verifiedBy?: { id: string; name: string } | null;
+  /** Solo en el detalle. */
+  acceptances?: KitAcceptanceSummary;
 }
 
 export interface Shortage {
@@ -240,6 +272,10 @@ export interface MyGroupDetail {
     id: string;
     code: string;
     status: KitStatus;
+    /** El kit ya fue verificado por algún integrante del grupo. */
+    isVerified: boolean;
+    /** El usuario actual ya aceptó las condiciones de ESTE kit. */
+    hasAccepted: boolean;
     items: {
       componentName: string;
       quantity: number;
@@ -283,4 +319,42 @@ export interface ReturnsSummary {
     returnedQuantity: number;
     pending: number;
   }[];
+}
+
+// --- Verificación de entrega y condiciones de préstamo (Fase 9b) ---
+
+export interface LoanTerms {
+  version: string;
+  title: string;
+  body: string;
+}
+
+export interface MyKitItem {
+  id: string;
+  componentName: string;
+  quantity: number;
+  verified: boolean;
+  verificationNote: string | null;
+}
+
+/** Kit visto por el alumno para verificarlo y aceptar condiciones. */
+export interface MyKitDetail {
+  id: string;
+  code: string;
+  status: KitStatus;
+  assignedAt: string;
+  groupId: string;
+  groupName: string;
+  items: MyKitItem[];
+  verifiedAt: string | null;
+  verifiedBy: { id: string; name: string } | null;
+  members: KitAcceptanceMember[];
+  isVerified: boolean;
+  /** El usuario actual ya aceptó. */
+  hasAccepted: boolean;
+  /** Fecha en que aceptó el usuario actual (null si aún no acepta). */
+  myAcceptedAt: string | null;
+  allAccepted: boolean;
+  /** Versión vigente del texto; se reenvía al aceptar. */
+  termsVersion: string;
 }
