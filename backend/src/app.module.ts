@@ -11,6 +11,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { CoursesModule } from './courses/courses.module';
 import { GroupsModule } from './groups/groups.module';
 import { ComponentsModule } from './components/components.module';
+import { TagsModule } from './tags/tags.module';
 import { KitTemplatesModule } from './kit-templates/kit-templates.module';
 import { KitsModule } from './kits/kits.module';
 import { LoansModule } from './loans/loans.module';
@@ -32,6 +33,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     CoursesModule,
     GroupsModule,
     ComponentsModule,
+    TagsModule,
     KitTemplatesModule,
     KitsModule,
     LoansModule,

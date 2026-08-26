@@ -17,6 +17,7 @@ import { CatalogReadGuard } from '../auth/guards/catalog-read.guard';
 import { ComponentsService } from './components.service';
 import { CreateComponentDto } from './dto/create-component.dto';
 import { UpdateComponentDto } from './dto/update-component.dto';
+import { ListComponentsQueryDto } from './dto/list-components.query.dto';
 
 @Controller('components')
 export class ComponentsController {
@@ -30,8 +31,8 @@ export class ComponentsController {
 
   @Get()
   @UseGuards(CatalogReadGuard)
-  list(@Query('search') search?: string) {
-    return this.componentsService.list(search);
+  list(@Query() query: ListComponentsQueryDto) {
+    return this.componentsService.list(query);
   }
 
   @Get(':id')

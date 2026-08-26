@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   useComponents,
   useComponent,
@@ -7,6 +7,7 @@ import {
   useDeleteComponent,
   type ComponentInput,
 } from '@/api/components';
+import { useTags, useCreateTag, useUpdateTag, useDeleteTag } from '@/api/tags';
 import {
   useKitTemplates,
   useCreateTemplate,
@@ -14,8 +15,10 @@ import {
   useDeleteTemplate,
   type TemplateInput,
 } from '@/api/templates';
+import { useDebounced } from '@/hooks/useDebounced';
 import { getApiErrorMessage } from '@/lib/errors';
-import type { Component, KitTemplate } from '@/lib/apiTypes';
+import type { Component, KitTemplate, Tag, TagRef } from '@/lib/apiTypes';
+import { DEFAULT_TAG_COLOR, normalizeHex, tagStyles } from '@/lib/tagColor';
 import { useToast } from '@/store/toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -23,9 +26,12 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { TagBadgeList } from '@/components/ui/TagBadge';
+import { TagChips } from '@/components/ui/TagChips';
+import { TagMultiSelect } from '@/components/ui/TagMultiSelect';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
-type Tab = 'components' | 'templates';
+type Tab = 'components' | 'templates' | 'tags';
 
 export function WarehousePage() {
   const [tab, setTab] = useState<Tab>('components');
@@ -33,19 +39,31 @@ export function WarehousePage() {
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-3xl font-bold text-text-primary">Bodega</h1>
-      <p className="mt-1 text-text-secondary">Componentes y plantillas de kit.</p>
+      <p className="mt-1 text-text-secondary">Componentes, etiquetas y plantillas de kit.</p>
 
-      <div className="mt-5 flex gap-1 border-b border-border">
-        <TabButton active={tab === 'components'} onClick={() => setTab('components')}>
-          Componentes
-        </TabButton>
-        <TabButton active={tab === 'templates'} onClick={() => setTab('templates')}>
-          Plantillas de kit
-        </TabButton>
+      {/* Scroll horizontal en las pestañas para que no desborden a ~375px. */}
+      <div className="mt-5 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="flex w-max min-w-full gap-1 border-b border-border">
+          <TabButton active={tab === 'components'} onClick={() => setTab('components')}>
+            Componentes
+          </TabButton>
+          <TabButton active={tab === 'tags'} onClick={() => setTab('tags')}>
+            Etiquetas
+          </TabButton>
+          <TabButton active={tab === 'templates'} onClick={() => setTab('templates')}>
+            Plantillas de kit
+          </TabButton>
+        </div>
       </div>
 
       <div className="mt-5">
-        {tab === 'components' ? <ComponentsSection /> : <TemplatesSection />}
+        {tab === 'components' ? (
+          <ComponentsSection />
+        ) : tab === 'tags' ? (
+          <TagsSection />
+        ) : (
+          <TemplatesSection />
+        )}
       </div>
     </div>
   );
@@ -64,7 +82,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
+      className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
         active
           ? 'border-primary text-primary'
           : 'border-transparent text-text-secondary hover:text-text-primary'
@@ -81,39 +99,75 @@ function TabButton({
 
 interface ComponentFormState {
   name: string;
+  code: string;
   description: string;
   totalStock: string;
+  tagIds: string[];
 }
+
+const EMPTY_FORM: ComponentFormState = {
+  name: '',
+  code: '',
+  description: '',
+  totalStock: '0',
+  tagIds: [],
+};
+
+type ViewMode = 'grouped' | 'flat';
+
+/** Etiqueta sintética para los componentes que no tienen ninguna. */
+const UNTAGGED: TagRef = { id: '__untagged__', name: 'Sin etiqueta', color: '#9aa5b5' };
 
 function ComponentsSection() {
   const toast = useToast();
+
   const [search, setSearch] = useState('');
-  const query = useComponents(search);
+  const debouncedSearch = useDebounced(search, 300);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [view, setView] = useState<ViewMode>('grouped');
+
+  const tagsQuery = useTags();
+  const query = useComponents({ search: debouncedSearch, tagIds: selectedTagIds });
   const createComponent = useCreateComponent();
   const updateComponent = useUpdateComponent();
   const deleteComponent = useDeleteComponent();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Component | null>(null);
-  const [form, setForm] = useState<ComponentFormState>({
-    name: '',
-    description: '',
-    totalStock: '0',
-  });
+  const [form, setForm] = useState<ComponentFormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Component | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
+  const tags = useMemo(() => tagsQuery.data ?? [], [tagsQuery.data]);
+  const hasFilters = Boolean(search.trim()) || selectedTagIds.length > 0;
+
+  const toggleTagFilter = (id: string) =>
+    setSelectedTagIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const clearFilters = () => {
+    setSearch('');
+    setSelectedTagIds([]);
+  };
+
   const openCreate = () => {
     setEditing(null);
-    setForm({ name: '', description: '', totalStock: '0' });
+    setForm(EMPTY_FORM);
     setFormError(null);
     setFormOpen(true);
   };
 
   const openEdit = (c: Component) => {
     setEditing(c);
-    setForm({ name: c.name, description: c.description ?? '', totalStock: String(c.totalStock) });
+    setForm({
+      name: c.name,
+      code: c.code ?? '',
+      description: c.description ?? '',
+      totalStock: String(c.totalStock),
+      tagIds: c.tags.map((t) => t.id),
+    });
     setFormError(null);
     setFormOpen(true);
   };
@@ -127,8 +181,11 @@ function ComponentsSection() {
 
     const input: ComponentInput = {
       name,
+      // Cadena vacía → null: el backend limpia el código en ese caso.
+      code: form.code.trim() || null,
       description: form.description.trim() || undefined,
       totalStock,
+      tagIds: form.tagIds,
     };
     const onError = (err: unknown) => setFormError(getApiErrorMessage(err));
     if (editing) {
@@ -167,18 +224,97 @@ function ComponentsSection() {
     });
   };
 
+  const components = useMemo(() => query.data ?? [], [query.data]);
+
+  /**
+   * Agrupa por etiqueta. Un componente con N etiquetas aparece en las N secciones;
+   * los que no tienen ninguna caen en la sección final "Sin etiqueta".
+   */
+  const groups = useMemo(() => {
+    const byTag = new Map<string, { tag: TagRef; items: Component[] }>();
+    const untagged: Component[] = [];
+
+    for (const c of components) {
+      if (c.tags.length === 0) {
+        untagged.push(c);
+        continue;
+      }
+      for (const t of c.tags) {
+        const entry = byTag.get(t.id) ?? { tag: t, items: [] };
+        entry.items.push(c);
+        byTag.set(t.id, entry);
+      }
+    }
+
+    const sections = [...byTag.values()].sort((a, b) => a.tag.name.localeCompare(b.tag.name));
+    if (untagged.length > 0) sections.push({ tag: UNTAGGED, items: untagged });
+    return sections;
+  }, [components]);
+
+  const actions = { onDetail: setDetailId, onEdit: openEdit, onDelete: setDeleting };
+
   return (
     <div>
-      <div className="flex items-end justify-between gap-3">
-        <div className="w-72">
+      {/* Barra de búsqueda: ancho completo en móvil, con el botón debajo. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="w-full sm:max-w-sm">
           <Input
             label="Buscar componente"
-            placeholder="Nombre…"
+            placeholder="Buscar por nombre o código…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Button onClick={openCreate}>Nuevo componente</Button>
+        <Button onClick={openCreate} className="w-full sm:w-auto">
+          Nuevo componente
+        </Button>
+      </div>
+
+      {/* Filtros por etiqueta */}
+      <div className="mt-4 rounded-[var(--radius-card)] border border-border bg-surface-card p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+            Filtrar por etiqueta
+          </span>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-xs font-semibold text-primary hover:underline"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+        <div className="mt-2">
+          {tagsQuery.isLoading ? (
+            <p className="text-sm text-text-muted">Cargando etiquetas…</p>
+          ) : (
+            <TagChips
+              tags={tags}
+              selectedIds={selectedTagIds}
+              onToggle={toggleTagFilter}
+              showCount
+              emptyMessage="Aún no hay etiquetas. Créalas en la pestaña «Etiquetas»."
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Toggle de vista */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-text-secondary">
+          {components.length} componente(s)
+          {selectedTagIds.length > 0 && ` · ${selectedTagIds.length} etiqueta(s) activa(s)`}
+        </span>
+        <div className="inline-flex rounded-[var(--radius)] border border-border bg-surface-card p-0.5">
+          <ViewToggleButton active={view === 'grouped'} onClick={() => setView('grouped')}>
+            Agrupado
+          </ViewToggleButton>
+          <ViewToggleButton active={view === 'flat'} onClick={() => setView('flat')}>
+            Plano
+          </ViewToggleButton>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -186,49 +322,35 @@ function ComponentsSection() {
           <Loading />
         ) : query.isError ? (
           <ErrorState message={getApiErrorMessage(query.error)} />
-        ) : query.data && query.data.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Nombre</Th>
-                <Th>Descripción</Th>
-                <Th>Stock</Th>
-                <Th>Disponible</Th>
-                <Th className="text-right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data.map((c) => (
-                <tr key={c.id}>
-                  <Td className="font-semibold">{c.name}</Td>
-                  <Td className="text-text-secondary">{c.description ?? '—'}</Td>
-                  <Td>{c.totalStock}</Td>
-                  <Td>
-                    <span
-                      className={`font-semibold ${c.available > 0 ? 'text-success' : 'text-danger'}`}
-                    >
-                      {c.available}
-                    </span>
-                  </Td>
-                  <Td className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => setDetailId(c.id)}>
-                        Ver
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => openEdit(c)}>
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(c)}>
-                        Eliminar
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        ) : (
+        ) : components.length === 0 ? (
           <EmptyState message="No hay componentes que coincidan." />
+        ) : view === 'flat' ? (
+          <ComponentList components={components} {...actions} />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {groups.map(({ tag, items }) => (
+              <section
+                key={tag.id}
+                className="overflow-hidden rounded-[var(--radius-card)] border border-border bg-surface-card"
+              >
+                <header
+                  className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5"
+                  style={tagStyles(tag.color)}
+                >
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: normalizeHex(tag.color) }}
+                  />
+                  <h3 className="min-w-0 truncate text-sm font-bold">{tag.name}</h3>
+                  <span className="ml-auto shrink-0 text-xs font-semibold opacity-80">
+                    {items.length} ítem(s)
+                  </span>
+                </header>
+                <ComponentList components={items} bare {...actions} />
+              </section>
+            ))}
+          </div>
         )}
       </div>
 
@@ -257,6 +379,12 @@ function ComponentsSection() {
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
           <Input
+            label="Código (opcional)"
+            placeholder="Ej. RES-220"
+            value={form.code}
+            onChange={(e) => setForm({ ...form, code: e.target.value })}
+          />
+          <Input
             label="Descripción (opcional)"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -267,6 +395,11 @@ function ComponentsSection() {
             className="w-32"
             value={form.totalStock}
             onChange={(e) => setForm({ ...form, totalStock: e.target.value })}
+          />
+          <TagMultiSelect
+            tags={tags}
+            selectedIds={form.tagIds}
+            onChange={(tagIds) => setForm({ ...form, tagIds })}
           />
           {formError && <p className="text-sm text-danger">{formError}</p>}
         </div>
@@ -288,6 +421,174 @@ function ComponentsSection() {
   );
 }
 
+function ViewToggleButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-[calc(var(--radius)-2px)] px-3 py-1.5 text-xs font-semibold transition-colors ${
+        active ? 'bg-primary text-text-on-primary' : 'text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface ComponentListProps {
+  components: Component[];
+  onDetail: (id: string) => void;
+  onEdit: (c: Component) => void;
+  onDelete: (c: Component) => void;
+  /** Dentro de una sección agrupada: sin borde/tarjeta propia. */
+  bare?: boolean;
+}
+
+/**
+ * Listado responsive: tarjetas apiladas en móvil, tabla desde `sm`.
+ * (La tabla no cabe a 375px sin scroll horizontal.)
+ */
+function ComponentList({ components, onDetail, onEdit, onDelete, bare }: ComponentListProps) {
+  const rowActions = (c: Component) => (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button size="sm" variant="ghost" onClick={() => onDetail(c.id)}>
+        Ver
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => onEdit(c)}>
+        Editar
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => onDelete(c)}>
+        Eliminar
+      </Button>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Móvil: tarjetas apiladas */}
+      <div className={`flex flex-col gap-3 sm:hidden ${bare ? 'p-3' : ''}`}>
+        {components.map((c) => (
+          <div
+            key={c.id}
+            className={`min-w-0 rounded-[var(--radius-card)] p-3 ${
+              bare ? 'border border-border' : 'border border-border bg-surface-card'
+            }`}
+          >
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-text-primary">{c.name}</p>
+                {c.code && (
+                  <p className="mt-0.5 truncate font-mono text-xs text-text-muted">{c.code}</p>
+                )}
+              </div>
+              <span
+                className={`shrink-0 text-sm font-bold ${
+                  c.available > 0 ? 'text-success' : 'text-danger'
+                }`}
+              >
+                {c.available}/{c.totalStock}
+              </span>
+            </div>
+            {c.description && (
+              <p className="mt-1 line-clamp-2 text-xs text-text-secondary">{c.description}</p>
+            )}
+            <TagBadgeList tags={c.tags} className="mt-2" />
+            <div className="mt-2 border-t border-border pt-2">{rowActions(c)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: tabla. `table-fixed` mantiene las columnas alineadas entre
+          secciones agrupadas (si no, cada tabla calcula anchos distintos). */}
+      <div
+        className={
+          bare
+            ? 'hidden overflow-x-auto sm:block'
+            : 'hidden overflow-x-auto rounded-[var(--radius-card)] border border-border bg-surface-card sm:block'
+        }
+      >
+        <table className="w-full table-fixed border-collapse text-sm">
+          <ComponentTableBody
+            components={components}
+            rowActions={rowActions}
+            firstRowBorderless={bare}
+          />
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ComponentTableBody({
+  components,
+  rowActions,
+  firstRowBorderless = false,
+}: {
+  components: Component[];
+  rowActions: (c: Component) => React.ReactNode;
+  firstRowBorderless?: boolean;
+}) {
+  return (
+    <>
+      <thead>
+        <tr>
+          <Th>Componente</Th>
+          <Th className="w-[26%]">Etiquetas</Th>
+          <Th className="w-20">Stock</Th>
+          <Th className="w-28">Disponible</Th>
+          <Th className="w-[15.5rem] text-right">Acciones</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {components.map((c, idx) => (
+          <tr key={c.id}>
+            <Td className={firstRowBorderless && idx === 0 ? 'border-t-0' : undefined}>
+              <span className="font-semibold break-words">{c.name}</span>
+              {c.code && (
+                <span className="ml-2 inline-block whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+                  {c.code}
+                </span>
+              )}
+              {c.description && (
+                <p className="mt-0.5 text-xs text-text-secondary">{c.description}</p>
+              )}
+            </Td>
+            <Td className={firstRowBorderless && idx === 0 ? 'border-t-0' : undefined}>
+              {c.tags.length > 0 ? (
+                <TagBadgeList tags={c.tags} />
+              ) : (
+                <span className="text-text-muted">—</span>
+              )}
+            </Td>
+            <Td className={firstRowBorderless && idx === 0 ? 'border-t-0' : undefined}>
+              {c.totalStock}
+            </Td>
+            <Td className={firstRowBorderless && idx === 0 ? 'border-t-0' : undefined}>
+              <span className={`font-semibold ${c.available > 0 ? 'text-success' : 'text-danger'}`}>
+                {c.available}
+              </span>
+            </Td>
+            <Td
+              className={`text-right ${firstRowBorderless && idx === 0 ? 'border-t-0' : ''}`}
+            >
+              {rowActions(c)}
+            </Td>
+          </tr>
+        ))}
+      </tbody>
+    </>
+  );
+}
+
 function ComponentDetailModal({ id, onClose }: { id: string | null; onClose: () => void }) {
   const query = useComponent(id);
   return (
@@ -299,7 +600,16 @@ function ComponentDetailModal({ id, onClose }: { id: string | null; onClose: () 
       ) : query.data ? (
         <div className="flex flex-col gap-2 text-sm">
           <Row label="Nombre" value={query.data.name} />
+          <Row label="Código" value={query.data.code ?? '—'} />
           <Row label="Descripción" value={query.data.description ?? '—'} />
+          <div className="flex flex-wrap justify-between gap-2">
+            <span className="text-text-secondary">Etiquetas</span>
+            {query.data.tags.length > 0 ? (
+              <TagBadgeList tags={query.data.tags} className="justify-end" />
+            ) : (
+              <span className="font-semibold text-text-primary">—</span>
+            )}
+          </div>
           <Row label="Stock total" value={String(query.data.totalStock)} />
           <Row label="Comprometido en kits" value={String(query.data.inKits)} />
           <Row label="Comprometido en préstamos" value={String(query.data.inLoans)} />
@@ -327,9 +637,9 @@ function Row({
 }) {
   return (
     <div className="flex justify-between gap-4">
-      <span className="text-text-secondary">{label}</span>
+      <span className="shrink-0 text-text-secondary">{label}</span>
       <span
-        className={`font-semibold ${
+        className={`min-w-0 break-words text-right font-semibold ${
           highlight === 'success'
             ? 'text-success'
             : highlight === 'danger'
@@ -339,6 +649,200 @@ function Row({
       >
         {value}
       </span>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Etiquetas
+// ----------------------------------------------------------------------------
+
+function TagsSection() {
+  const toast = useToast();
+  const tagsQuery = useTags();
+  const createTag = useCreateTag();
+  const updateTag = useUpdateTag();
+  const deleteTag = useDeleteTag();
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Tag | null>(null);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(DEFAULT_TAG_COLOR);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Tag | null>(null);
+
+  const openCreate = () => {
+    setEditing(null);
+    setName('');
+    setColor(DEFAULT_TAG_COLOR);
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (tag: Tag) => {
+    setEditing(tag);
+    setName(tag.name);
+    setColor(normalizeHex(tag.color));
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return setFormError('El nombre es obligatorio.');
+
+    const input = { name: trimmed, color };
+    const onError = (err: unknown) => setFormError(getApiErrorMessage(err));
+    if (editing) {
+      updateTag.mutate(
+        { id: editing.id, input },
+        {
+          onSuccess: () => {
+            toast.success('Etiqueta actualizada.');
+            setFormOpen(false);
+          },
+          onError,
+        },
+      );
+    } else {
+      createTag.mutate(input, {
+        onSuccess: () => {
+          toast.success('Etiqueta creada.');
+          setFormOpen(false);
+        },
+        onError,
+      });
+    }
+  };
+
+  const confirmDelete = () => {
+    if (!deleting) return;
+    deleteTag.mutate(deleting.id, {
+      onSuccess: (res) => {
+        toast.success(
+          res.detachedComponents > 0
+            ? `Etiqueta eliminada; se desasoció de ${res.detachedComponents} componente(s).`
+            : 'Etiqueta eliminada.',
+        );
+        setDeleting(null);
+      },
+      onError: (err) => {
+        toast.error(getApiErrorMessage(err));
+        setDeleting(null);
+      },
+    });
+  };
+
+  const tags = tagsQuery.data ?? [];
+
+  return (
+    <div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-text-secondary">
+          Las etiquetas agrupan componentes en la bodega. Eliminar una etiqueta{' '}
+          <strong>no elimina</strong> los componentes.
+        </p>
+        <Button onClick={openCreate} className="w-full shrink-0 sm:w-auto">
+          Nueva etiqueta
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        {tagsQuery.isLoading ? (
+          <Loading />
+        ) : tagsQuery.isError ? (
+          <ErrorState message={getApiErrorMessage(tagsQuery.error)} />
+        ) : tags.length === 0 ? (
+          <EmptyState message="Aún no hay etiquetas." />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {tags.map((tag) => (
+              <div
+                key={tag.id}
+                className="flex min-w-0 flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-border bg-surface-card p-3"
+              >
+                <span
+                  aria-hidden
+                  className="h-8 w-8 shrink-0 rounded-full border border-border"
+                  style={{ backgroundColor: normalizeHex(tag.color) }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words font-semibold text-text-primary">{tag.name}</p>
+                  <p className="text-xs text-text-secondary">
+                    {tag.componentsCount} componente(s) · {normalizeHex(tag.color)}
+                  </p>
+                </div>
+                {/* En móvil las acciones bajan a su propia línea (si no, el nombre se trunca). */}
+                <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
+                  <Button size="sm" variant="secondary" onClick={() => openEdit(tag)}>
+                    Editar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleting(tag)}>
+                    Eliminar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        title={editing ? 'Editar etiqueta' : 'Nueva etiqueta'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} disabled={createTag.isPending || updateTag.isPending}>
+              {editing ? 'Guardar' : 'Crear'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Input label="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
+
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-semibold text-text-secondary">Color</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="color"
+                aria-label="Color de la etiqueta"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="h-11 w-14 shrink-0 cursor-pointer rounded-[var(--radius)] border border-border bg-surface-card p-1"
+              />
+              <span className="font-mono text-sm text-text-secondary">{color}</span>
+              <span
+                style={tagStyles(color)}
+                className="ml-auto inline-flex max-w-full items-center truncate rounded-full border px-2.5 py-1 text-xs font-semibold"
+              >
+                {name.trim() || 'Vista previa'}
+              </span>
+            </div>
+          </div>
+
+          {formError && <p className="text-sm text-danger">{formError}</p>}
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title="Eliminar etiqueta"
+        message={
+          deleting
+            ? `¿Eliminar la etiqueta "${deleting.name}"? Los ${deleting.componentsCount} componente(s) asociado(s) NO se eliminan: solo se les quita esta etiqueta.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        danger
+        loading={deleteTag.isPending}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleting(null)}
+      />
     </div>
   );
 }
@@ -441,7 +945,9 @@ function TemplatesSection() {
   return (
     <div>
       <div className="flex justify-end">
-        <Button onClick={openCreate}>Nueva plantilla</Button>
+        <Button onClick={openCreate} className="w-full sm:w-auto">
+          Nueva plantilla
+        </Button>
       </div>
 
       <div className="mt-4">
@@ -494,10 +1000,7 @@ function TemplatesSection() {
             <Button variant="secondary" onClick={() => setFormOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              onClick={submit}
-              disabled={createTemplate.isPending || updateTemplate.isPending}
-            >
+            <Button onClick={submit} disabled={createTemplate.isPending || updateTemplate.isPending}>
               {editing ? 'Guardar' : 'Crear'}
             </Button>
           </>
@@ -510,7 +1013,7 @@ function TemplatesSection() {
             <span className="text-sm font-semibold text-text-secondary">Componentes</span>
             {rows.map((row, idx) => (
               <div key={idx} className="flex items-end gap-2">
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <Select
                     value={row.componentId}
                     onChange={(e) => {
@@ -522,14 +1025,14 @@ function TemplatesSection() {
                     <option value="">Selecciona…</option>
                     {components.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name}
+                        {c.code ? `${c.name} (${c.code})` : c.name}
                       </option>
                     ))}
                   </Select>
                 </div>
                 <Input
                   type="number"
-                  className="w-24"
+                  className="w-20 shrink-0"
                   value={row.quantity}
                   onChange={(e) => {
                     const next = [...rows];

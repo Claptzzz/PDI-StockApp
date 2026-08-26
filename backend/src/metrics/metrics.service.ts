@@ -47,7 +47,13 @@ export class MetricsService {
 
   async stock() {
     const components = await this.prisma.component.findMany({
-      select: { id: true, name: true, totalStock: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        totalStock: true,
+        tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -60,6 +66,8 @@ export class MetricsService {
         return {
           id: c.id,
           name: c.name,
+          code: c.code,
+          tags: c.tags,
           totalStock: c.totalStock,
           committedInKits: cm.inKits,
           committedInLoans: cm.inLoans,

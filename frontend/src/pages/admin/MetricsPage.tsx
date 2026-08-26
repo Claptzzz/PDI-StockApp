@@ -5,6 +5,7 @@ import { useOverview, useStock, useUsage, usePendingReturns, type Period } from 
 import { getApiErrorMessage } from '@/lib/errors';
 import type { StockRow } from '@/lib/apiTypes';
 import { Badge } from '@/components/ui/Badge';
+import { TagBadgeList } from '@/components/ui/TagBadge';
 import { Select } from '@/components/ui/Select';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { Loading, ErrorState } from '@/components/ui/States';
@@ -168,6 +169,7 @@ function StockSection() {
               <thead>
                 <tr>
                   <Th>Componente</Th>
+                  <Th>Etiquetas</Th>
                   <Th>Total</Th>
                   <Th>En kits</Th>
                   <Th>En préstamos</Th>
@@ -178,7 +180,20 @@ function StockSection() {
                 {stock.data.map((s) => (
                   <tr key={s.id} className={s.lowStock ? 'bg-danger/5' : undefined}>
                     <Td className="font-semibold">
-                      {s.name} {s.lowStock && <Badge tone="danger">Bajo stock</Badge>}
+                      {s.name}{' '}
+                      {s.code && (
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs font-normal text-text-secondary">
+                          {s.code}
+                        </span>
+                      )}{' '}
+                      {s.lowStock && <Badge tone="danger">Bajo stock</Badge>}
+                    </Td>
+                    <Td>
+                      {s.tags.length > 0 ? (
+                        <TagBadgeList tags={s.tags} />
+                      ) : (
+                        <span className="text-text-muted">—</span>
+                      )}
                     </Td>
                     <Td>{s.totalStock}</Td>
                     <Td>{s.committedInKits}</Td>
