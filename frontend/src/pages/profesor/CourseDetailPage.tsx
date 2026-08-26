@@ -14,9 +14,12 @@ import { useToast } from '@/store/toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { MatchedMembers } from '@/components/ui/MatchedMembers';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
+import { useGroupSearch } from '@/hooks/useGroupSearch';
 import { AssistantsSection } from './AssistantsSection';
 
 export function CourseDetailPage() {
@@ -28,6 +31,7 @@ export function CourseDetailPage() {
   const renameGroup = useRenameGroup(courseId);
   const deleteGroup = useDeleteGroup(courseId);
   const importGroups = useImportGroups(courseId);
+  const search = useGroupSearch(groupsQuery.data);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Group | null>(null);
@@ -119,38 +123,59 @@ export function CourseDetailPage() {
         ) : groupsQuery.isError ? (
           <ErrorState message={getApiErrorMessage(groupsQuery.error)} />
         ) : groupsQuery.data && groupsQuery.data.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Grupo</Th>
-                <Th>Integrantes</Th>
-                <Th className="text-right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {groupsQuery.data.map((g) => (
-                <tr key={g.id}>
-                  <Td className="font-semibold">{g.name}</Td>
-                  <Td>{g.membersCount}</Td>
-                  <Td className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Link to={`/profesor/cursos/${courseId}/grupos/${g.id}`}>
-                        <Button size="sm" variant="secondary">
-                          Entrar
-                        </Button>
-                      </Link>
-                      <Button size="sm" variant="ghost" onClick={() => openRename(g)}>
-                        Renombrar
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(g)}>
-                        Eliminar
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <>
+            <SearchBar
+              value={search.query}
+              onValueChange={search.setQuery}
+              placeholder="Buscar equipo por nombre o integrante…"
+              hint={search.hint}
+              aria-label="Buscar equipo"
+            />
+
+            {search.matches.length === 0 ? (
+              <div className="mt-4">
+                <EmptyState message="Ningún equipo coincide con la búsqueda." />
+              </div>
+            ) : (
+              <div className="mt-4">
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>Grupo</Th>
+                      <Th>Integrantes</Th>
+                      <Th className="text-right">Acciones</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {search.matches.map(({ group: g, matchedMembers }) => (
+                      <tr key={g.id}>
+                        <Td>
+                          <span className="font-semibold">{g.name}</span>
+                          <MatchedMembers members={matchedMembers} />
+                        </Td>
+                        <Td>{g.membersCount}</Td>
+                        <Td className="text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Link to={`/profesor/cursos/${courseId}/grupos/${g.id}`}>
+                              <Button size="sm" variant="secondary">
+                                Entrar
+                              </Button>
+                            </Link>
+                            <Button size="sm" variant="ghost" onClick={() => openRename(g)}>
+                              Renombrar
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setDeleting(g)}>
+                              Eliminar
+                            </Button>
+                          </div>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+          </>
         ) : (
           <EmptyState message="Aún no hay grupos. Crea uno o importa un CSV." />
         )}
