@@ -16,6 +16,7 @@ import { KitTemplatesModule } from './kit-templates/kit-templates.module';
 import { KitsModule } from './kits/kits.module';
 import { LoansModule } from './loans/loans.module';
 import { StorageModule } from './storage/storage.module';
+import { ReturnsModule } from './returns/returns.module';
 import { TermsModule } from './terms/terms.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
@@ -39,6 +40,7 @@ import { RolesGuard } from './auth/guards/roles.guard';
     KitsModule,
     LoansModule,
     StorageModule,
+    ReturnsModule,
     TermsModule,
     HealthModule,
   ],

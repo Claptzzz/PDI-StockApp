@@ -47,13 +47,21 @@ export function useCreateLoan(courseId: string, groupId: string) {
   });
 }
 
+export interface ReturnLoanInput {
+  loanId: string;
+  quantity: number;
+  /** Observación opcional de quien recibe. */
+  note?: string;
+}
+
 export function useReturnLoan(courseId: string, groupId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ loanId, quantity }: { loanId: string; quantity: number }) =>
+    mutationFn: async ({ loanId, quantity, note }: ReturnLoanInput) =>
       (
         await api.patch<Loan>(`/courses/${courseId}/groups/${groupId}/loans/${loanId}/return`, {
           quantity,
+          note,
         })
       ).data,
     onSuccess: () => {

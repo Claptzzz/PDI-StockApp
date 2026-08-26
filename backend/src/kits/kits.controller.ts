@@ -11,6 +11,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { CourseOperateGuard } from '../courses/course-operate.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../auth/interfaces/auth.types';
 import { KitsService } from './kits.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
 import { UpdateKitDto } from './dto/update-kit.dto';
@@ -61,8 +63,17 @@ export class GroupKitsController {
     @Param('kitId') kitId: string,
     @Param('kitItemId') kitItemId: string,
     @Body() dto: ReturnKitItemDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.kitsService.returnItem(courseId, groupId, kitId, kitItemId, dto.quantity);
+    return this.kitsService.returnItem(
+      courseId,
+      groupId,
+      kitId,
+      kitItemId,
+      dto.quantity,
+      user.id,
+      dto.note,
+    );
   }
 
   @Delete(':kitId')

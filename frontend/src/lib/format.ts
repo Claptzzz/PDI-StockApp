@@ -24,3 +24,18 @@ export const formatDateTime = (iso: string | null | undefined) =>
         hour12: false,
       })
     : '—';
+
+/**
+ * Fecha compacta con hora para historiales: "26 ago, 20:37" (sin año, para que
+ * quepa en móvil). Acompáñala de `formatDateTime` en un `title` cuando el año importe.
+ */
+export const formatShortDateTime = (iso: string | null | undefined) =>
+  iso
+    ? new Date(iso).toLocaleString('es-CL', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    : '—';

@@ -35,6 +35,7 @@ model User {
   assistantRoles   CourseAssistant[] @relation("CourseAssistant")
   kitAcceptances   KitAcceptance[]   @relation("KitAcceptance")
   kitsVerified     Kit[]             @relation("KitVerifiedBy")
+  returnsReceived  ReturnEvent[]     @relation("ReturnReceivedBy")
 }
 
 model Course {
@@ -183,6 +184,8 @@ model KitItem {
   verified         Boolean    @default(false)
   /// Discrepancia reportada por el alumno. Se registra, NO ajusta cantidades ni stock.
   verificationNote String?
+
+  returnEvents ReturnEvent[]
 }
 
 /// Aceptacion INDIVIDUAL de las condiciones de prestamo: una fila por integrante.
@@ -214,4 +217,25 @@ model Loan {
   loanedById       String
   loanedAt         DateTime   @default(now())
   returnedAt       DateTime?
+
+  returnEvents ReturnEvent[]
+}
+
+/// Un evento por cada devolucion registrada (pueden ser parciales y en varios momentos).
+/// Exactamente uno de {kitItemId, loanId} viene seteado; se valida en el servicio.
+model ReturnEvent {
+  id           String   @id @default(cuid())
+  kitItem      KitItem? @relation(fields: [kitItemId], references: [id], onDelete: Cascade)
+  kitItemId    String?
+  loan         Loan?    @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loanId       String?
+  quantity     Int
+  /// Observacion opcional de quien recibe (estado, danos, etc.).
+  note         String?
+  receivedBy   User     @relation("ReturnReceivedBy", fields: [receivedById], references: [id])
+  receivedById String
+  createdAt    DateTime @default(now())
+
+  @@index([kitItemId, createdAt])
+  @@index([loanId, createdAt])
 }
