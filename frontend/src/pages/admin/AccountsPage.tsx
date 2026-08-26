@@ -1,13 +1,16 @@
 import { useState } from 'react';
-import { useUsers, useSetUserActive } from '@/api/users';
+import { useUsers, useSetUserActive, useSetUserRoles } from '@/api/users';
 import { getApiErrorMessage } from '@/lib/errors';
-import { roleLabel, type Role } from '@/lib/types';
+import { roleLabel, sortByPrivilege, userRoles, type Role } from '@/lib/types';
 import type { UserAccount } from '@/lib/apiTypes';
 import { useToast } from '@/store/toast';
+import { useAuth } from '@/store/auth';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Modal } from '@/components/ui/Modal';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
@@ -22,6 +25,7 @@ export function AccountsPage() {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState<Role | ''>('');
   const [target, setTarget] = useState<UserAccount | null>(null);
+  const [editingRoles, setEditingRoles] = useState<UserAccount | null>(null);
 
   const toast = useToast();
   const query = useUsers({ search: search || undefined, role: role || undefined });
@@ -79,9 +83,9 @@ export function AccountsPage() {
               <tr>
                 <Th>Nombre</Th>
                 <Th>Correo</Th>
-                <Th>Rol</Th>
+                <Th>Roles</Th>
                 <Th>Estado</Th>
-                <Th className="text-right">Acción</Th>
+                <Th className="text-right">Acciones</Th>
               </tr>
             </thead>
             <tbody>
@@ -90,7 +94,13 @@ export function AccountsPage() {
                   <Td className="font-semibold">{u.name}</Td>
                   <Td className="text-text-secondary">{u.email}</Td>
                   <Td>
-                    <Badge tone={ROLE_TONE[u.role]}>{roleLabel[u.role]}</Badge>
+                    <div className="flex flex-wrap gap-1">
+                      {userRoles(u).map((r) => (
+                        <Badge key={r} tone={ROLE_TONE[r]}>
+                          {roleLabel[r]}
+                        </Badge>
+                      ))}
+                    </div>
                   </Td>
                   <Td>
                     <Badge tone={u.isActive ? 'success' : 'danger'}>
@@ -98,13 +108,18 @@ export function AccountsPage() {
                     </Badge>
                   </Td>
                   <Td className="text-right">
-                    <Button
-                      size="sm"
-                      variant={u.isActive ? 'secondary' : 'primary'}
-                      onClick={() => setTarget(u)}
-                    >
-                      {u.isActive ? 'Deshabilitar' : 'Habilitar'}
-                    </Button>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Button size="sm" variant="secondary" onClick={() => setEditingRoles(u)}>
+                        Editar roles
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={u.isActive ? 'ghost' : 'primary'}
+                        onClick={() => setTarget(u)}
+                      >
+                        {u.isActive ? 'Deshabilitar' : 'Habilitar'}
+                      </Button>
+                    </div>
                   </Td>
                 </tr>
               ))}
@@ -114,6 +129,10 @@ export function AccountsPage() {
           <EmptyState message="No hay usuarios que coincidan con el filtro." />
         )}
       </div>
+
+      {editingRoles && (
+        <EditRolesModal user={editingRoles} onClose={() => setEditingRoles(null)} />
+      )}
 
       <ConfirmDialog
         open={Boolean(target)}
@@ -130,5 +149,99 @@ export function AccountsPage() {
         onCancel={() => setTarget(null)}
       />
     </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Edición de roles
+// ----------------------------------------------------------------------------
+
+const ALL_ROLES: Role[] = ['ADMIN', 'PROFESSOR', 'STUDENT'];
+
+function EditRolesModal({ user, onClose }: { user: UserAccount; onClose: () => void }) {
+  const toast = useToast();
+  const setRoles = useSetUserRoles();
+  const { user: me } = useAuth();
+
+  const [selected, setSelected] = useState<Role[]>(userRoles(user));
+  const [error, setError] = useState<string | null>(null);
+
+  const isSelf = me?.id === user.id;
+  const removingOwnAdmin = isSelf && userRoles(user).includes('ADMIN') && !selected.includes('ADMIN');
+
+  const toggle = (role: Role) => {
+    setError(null);
+    setSelected((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : sortByPrivilege([...prev, role]),
+    );
+  };
+
+  const submit = () => {
+    if (selected.length === 0) {
+      setError('El usuario debe tener al menos un rol.');
+      return;
+    }
+    setRoles.mutate(
+      { id: user.id, roles: selected },
+      {
+        onSuccess: () => {
+          toast.success('Roles actualizados.');
+          onClose();
+        },
+        // El backend rechaza quitarse ADMIN a uno mismo o dejar el sistema sin
+        // administradores; su mensaje se muestra tal cual.
+        onError: (err) => setError(getApiErrorMessage(err)),
+      },
+    );
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Editar roles"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={setRoles.isPending}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={setRoles.isPending || selected.length === 0}>
+            {setRoles.isPending ? 'Guardando…' : 'Guardar'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <div className="min-w-0">
+          <p className="break-words font-semibold text-text-primary">{user.name}</p>
+          <p className="break-words text-sm text-text-secondary">{user.email}</p>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-semibold text-text-secondary">Roles</span>
+          {ALL_ROLES.map((role) => (
+            <Checkbox
+              key={role}
+              checked={selected.includes(role)}
+              onChange={() => toggle(role)}
+              label={roleLabel[role]}
+            />
+          ))}
+        </div>
+
+        <p className="text-xs text-text-secondary">
+          Los roles se acumulan: un alumno puede ser además administrador. El rol principal
+          (el de mayor privilegio) se recalcula solo.
+        </p>
+
+        {removingOwnAdmin && (
+          <p className="rounded-[var(--radius)] border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-ocre">
+            Estás quitándote el rol de administrador a ti mismo: el sistema lo rechazará.
+          </p>
+        )}
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+    </Modal>
   );
 }

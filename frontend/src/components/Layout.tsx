@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/store/auth';
 import { useMyContexts } from '@/api/student';
-import { roleLabel, type Role } from '@/lib/types';
+import { roleLabel, userRoles, type Role } from '@/lib/types';
 import { Toaster } from '@/components/ui/Toaster';
 import ucnLogo from '@/assets/UCN_y_texto.png';
 
@@ -11,27 +11,55 @@ interface NavItem {
   to?: string;
 }
 
-const NAV_ITEMS: Record<Role, NavItem[]> = {
-  ADMIN: [
-    { label: 'Métricas', to: '/admin/metricas' },
-    { label: 'Cuentas', to: '/admin/cuentas' },
-    { label: 'Cursos', to: '/admin/cursos' },
-    { label: 'Bodega', to: '/admin/bodega' },
-  ],
-  PROFESSOR: [{ label: 'Cursos', to: '/profesor/cursos' }],
-  STUDENT: [{ label: 'Mi grupo', to: '/estudiante' }],
+interface NavSection {
+  /** Encabezado del área. Solo se pinta si el usuario tiene más de un rol. */
+  title: string;
+  items: NavItem[];
+}
+
+/** Un área de navegación por rol. Se acumulan: [STUDENT, ADMIN] ve dos secciones. */
+const SECTION_BY_ROLE: Record<Role, NavSection> = {
+  ADMIN: {
+    title: 'Administración',
+    items: [
+      { label: 'Métricas', to: '/admin/metricas' },
+      { label: 'Cuentas', to: '/admin/cuentas' },
+      { label: 'Cursos', to: '/admin/cursos' },
+      { label: 'Bodega', to: '/admin/bodega' },
+    ],
+  },
+  PROFESSOR: {
+    title: 'Docencia',
+    items: [{ label: 'Cursos', to: '/profesor/cursos' }],
+  },
+  STUDENT: {
+    title: 'Estudiante',
+    items: [{ label: 'Mi grupo', to: '/estudiante' }],
+  },
 };
+
+/** Orden fijo de las secciones, de mayor a menor privilegio. */
+const SECTION_ORDER: Role[] = ['ADMIN', 'PROFESSOR', 'STUDENT'];
 
 export function Layout() {
   const { user, logout } = useAuth();
-  const contexts = useMyContexts(user?.role === 'STUDENT');
+  const roles = userRoles(user);
+  const contexts = useMyContexts(roles.includes('STUDENT'));
   const hasAssistant = (contexts.data ?? []).some((c) => c.hatType === 'ASSISTANT');
 
-  const items: NavItem[] = !user
-    ? []
-    : user.role === 'STUDENT'
-      ? [{ label: hasAssistant ? 'Mis cursos' : 'Mi grupo', to: '/estudiante' }]
-      : NAV_ITEMS[user.role];
+  // Secciones acumuladas por rol, en orden fijo de privilegio.
+  const sections: NavSection[] = SECTION_ORDER.filter((r) => roles.includes(r)).map((role) => {
+    const section = SECTION_BY_ROLE[role];
+    if (role !== 'STUDENT') return section;
+    // El ayudante entra por la misma ruta, pero la etiqueta cambia.
+    return {
+      ...section,
+      items: [{ label: hasAssistant ? 'Mis cursos' : 'Mi grupo', to: '/estudiante' }],
+    };
+  });
+
+  // Con un solo rol no se pintan encabezados: se ve igual que antes.
+  const showHeadings = sections.length > 1;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -65,33 +93,44 @@ export function Layout() {
         }`}
       >
         <div className="border-b border-white/10 px-6 py-5 text-lg font-bold">Kits Arduino</div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {items.map((item) =>
-            item.to ? (
-              <NavLink
-                key={item.label}
-                to={item.to}
-                onClick={() => setDrawerOpen(false)}
-                className={({ isActive }) =>
-                  `flex min-h-[44px] items-center rounded-[var(--radius)] px-3 text-sm font-semibold transition-colors ${
-                    isActive ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ) : (
-              <div
-                key={item.label}
-                className="flex min-h-[44px] items-center justify-between rounded-[var(--radius)] px-3 text-sm text-white/80"
-              >
-                <span>{item.label}</span>
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/60">
-                  pronto
-                </span>
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          {sections.map((section, idx) => (
+            <div key={section.title} className={idx > 0 ? 'mt-5' : undefined}>
+              {showHeadings && (
+                <h2 className="mb-1 px-3 text-[11px] font-bold uppercase tracking-wider text-white/40">
+                  {section.title}
+                </h2>
+              )}
+              <div className="space-y-1">
+                {section.items.map((item) =>
+                  item.to ? (
+                    <NavLink
+                      key={item.label}
+                      to={item.to}
+                      onClick={() => setDrawerOpen(false)}
+                      className={({ isActive }) =>
+                        `flex min-h-[44px] items-center rounded-[var(--radius)] px-3 text-sm font-semibold transition-colors ${
+                          isActive ? 'bg-white/15 text-white' : 'text-white/80 hover:bg-white/10'
+                        }`
+                      }
+                    >
+                      <span className="min-w-0 truncate">{item.label}</span>
+                    </NavLink>
+                  ) : (
+                    <div
+                      key={item.label}
+                      className="flex min-h-[44px] items-center justify-between gap-2 rounded-[var(--radius)] px-3 text-sm text-white/80"
+                    >
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                        pronto
+                      </span>
+                    </div>
+                  ),
+                )}
               </div>
-            ),
-          )}
+            </div>
+          ))}
         </nav>
         <div className="border-t border-white/10 px-6 py-4 text-xs text-white/40">
           UCN · Escuela de Ingeniería
@@ -128,7 +167,8 @@ export function Layout() {
 
           <UserMenu
             name={user?.name ?? ''}
-            role={user ? roleLabel[user.role] : ''}
+            // Con varios roles se listan todos: "Administrador · Estudiante".
+            role={roles.map((r) => roleLabel[r]).join(' · ')}
             onLogout={logout}
           />
         </header>

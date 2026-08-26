@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveRole } from '../auth/role.util';
+import { resolveRoles } from '../auth/role.util';
 
 /** Deriva un nombre legible desde la parte local del correo. */
 function nameFromEmail(email: string): string {
@@ -144,7 +144,9 @@ export class GroupsService {
     await this.ensureGroupInCourse(courseId, groupId);
 
     const email = rawEmail.trim().toLowerCase();
-    if (resolveRole(email, this.adminEmails, this.professorEmails) !== Role.STUDENT) {
+    // INCLUDES, no igualdad: un alumno que además esté en ADMIN_EMAILS sigue
+    // pudiendo ser miembro de un grupo.
+    if (!resolveRoles(email, this.adminEmails, this.professorEmails).includes(Role.STUDENT)) {
       throw new BadRequestException('El correo no es de un alumno (@alumnos.ucn.cl)');
     }
 
@@ -176,7 +178,13 @@ export class GroupsService {
       const user =
         existing ??
         (await tx.user.create({
-          data: { email, name: nameFromEmail(email), role: Role.STUDENT, isActive: true },
+          data: {
+            email,
+            name: nameFromEmail(email),
+            role: Role.STUDENT,
+            roles: [Role.STUDENT],
+            isActive: true,
+          },
         }));
       await tx.groupMember.create({ data: { groupId, studentId: user.id } });
       return user;
@@ -260,7 +268,10 @@ export class GroupsService {
     const groupName = (row.nombreGrupo ?? '').trim();
     const name = `${nombre} ${apellido}`.trim() || email;
 
-    if (!email || resolveRole(email, this.adminEmails, this.professorEmails) !== Role.STUDENT) {
+    if (
+      !email ||
+      !resolveRoles(email, this.adminEmails, this.professorEmails).includes(Role.STUDENT)
+    ) {
       return { ok: false, email, reason: 'El correo no es de un alumno (@alumnos.ucn.cl)' };
     }
     if (!groupName) {
@@ -303,7 +314,7 @@ export class GroupsService {
       const user =
         existingUser ??
         (await tx.user.create({
-          data: { email, name, role: Role.STUDENT, isActive: true },
+          data: { email, name, role: Role.STUDENT, roles: [Role.STUDENT], isActive: true },
         }));
 
       const existingMembership = await tx.groupMember.findUnique({

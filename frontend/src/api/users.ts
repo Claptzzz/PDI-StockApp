@@ -50,6 +50,17 @@ export function useSearchStudents(search: string) {
   });
 }
 
+export function useSetUserRoles() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, roles }: { id: string; roles: Role[] }) => {
+      const { data } = await api.patch<UserAccount>(`/users/${id}/roles`, { roles });
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
 export function useSetUserActive() {
   const qc = useQueryClient();
   return useMutation({

@@ -23,7 +23,12 @@ model User {
   id        String   @id @default(cuid())
   email     String   @unique
   name      String
+  /// Rol PRINCIPAL: el de mayor privilegio dentro de `roles`. Derivado y mantenido
+  /// en sincronia en cada escritura; se conserva por compatibilidad y como default.
   role      Role
+  /// FUENTE DE VERDAD de la autorizacion. Un usuario puede acumular varios roles
+  /// (p. ej. un alumno que ademas es admin queda con [STUDENT, ADMIN]).
+  roles     Role[]   @default([])
   googleId  String?  @unique
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -181,7 +186,7 @@ model KitItem {
   returnedQuantity Int        @default(0)
 
   /// Marcado por el alumno en la verificacion de entrega ("recibido conforme").
-  verified         Boolean    @default(false)
+  verified         Boolean @default(false)
   /// Discrepancia reportada por el alumno. Se registra, NO ajusta cantidades ni stock.
   verificationNote String?
 

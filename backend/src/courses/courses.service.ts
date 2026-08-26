@@ -8,8 +8,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveRole } from '../auth/role.util';
-import type { AuthenticatedUser } from '../auth/interfaces/auth.types';
+import { resolveRoles } from '../auth/role.util';
+import { hasRole, type AuthenticatedUser } from '../auth/interfaces/auth.types';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { ListCoursesQueryDto } from './dto/list-courses.query.dto';
@@ -48,50 +48,51 @@ export class CoursesService {
 
   /**
    * Regla de acceso por curso, reutilizable desde guards u otros services:
-   * - ADMIN     → siempre.
-   * - PROFESSOR → solo si tiene un CourseProfessor autorizado en el curso.
-   * - STUDENT   → denegado (su acceso se define en fases siguientes).
+   * - roles incluye ADMIN     → siempre.
+   * - roles incluye PROFESSOR → solo si tiene un CourseProfessor autorizado en el curso.
+   * - resto                   → denegado.
+   *
+   * Se evalúa POR CURSO y por rol presente en el array: un usuario puede ser
+   * PROFESSOR en un curso y solo ayudante en otro.
    */
   async assertCourseAccess(user: AuthenticatedUser, courseId: string): Promise<void> {
-    if (user.role === Role.ADMIN) return;
+    if (hasRole(user, Role.ADMIN)) return;
 
-    if (user.role === Role.PROFESSOR) {
+    if (hasRole(user, Role.PROFESSOR)) {
       const link = await this.prisma.courseProfessor.findUnique({
         where: { courseId_professorId: { courseId, professorId: user.id } },
       });
       if (link?.authorized) return;
-      throw new ForbiddenException('No estás autorizado en este curso');
     }
 
-    throw new ForbiddenException('Acceso restringido a la gestión del curso');
+    throw new ForbiddenException('No estás autorizado en este curso');
   }
 
   /**
    * Regla de OPERACIÓN por curso (más amplia que "manage"):
-   * - ADMIN     → siempre.
-   * - PROFESSOR → si tiene CourseProfessor.authorized=true en el curso.
-   * - STUDENT   → si tiene CourseAssistant.active=true en el curso (ayudante).
+   * - roles incluye ADMIN     → siempre.
+   * - roles incluye PROFESSOR → si tiene CourseProfessor.authorized=true en el curso.
+   * - ayudante activo         → si tiene CourseAssistant.active=true en el curso.
+   *
+   * Las tres vías se prueban en cadena, no como ramas excluyentes: un profesor no
+   * autorizado en ESTE curso todavía puede ser ayudante en él.
    */
   async assertCourseOperate(user: AuthenticatedUser, courseId: string): Promise<void> {
-    if (user.role === Role.ADMIN) return;
+    if (hasRole(user, Role.ADMIN)) return;
 
-    if (user.role === Role.PROFESSOR) {
+    if (hasRole(user, Role.PROFESSOR)) {
       const link = await this.prisma.courseProfessor.findUnique({
         where: { courseId_professorId: { courseId, professorId: user.id } },
       });
       if (link?.authorized) return;
-      throw new ForbiddenException('No estás autorizado en este curso');
     }
 
-    if (user.role === Role.STUDENT) {
-      const assistant = await this.prisma.courseAssistant.findUnique({
-        where: { courseId_assistantId: { courseId, assistantId: user.id } },
-      });
-      if (assistant?.active) return;
-      throw new ForbiddenException('No eres ayudante de este curso');
-    }
+    const assistant = await this.prisma.courseAssistant.findUnique({
+      where: { courseId_assistantId: { courseId, assistantId: user.id } },
+    });
+    if (assistant?.active) return;
 
-    throw new ForbiddenException('Acceso restringido');
+    throw new ForbiddenException('No tienes permisos de operación en este curso');
   }
 
   // --- Ayudantes del curso ----------------------------------------------
@@ -115,8 +116,9 @@ export class CoursesService {
     await this.ensureCourseExists(courseId);
 
     const normalizedEmail = email.trim().toLowerCase();
-    const derivedRole = resolveRole(normalizedEmail, this.adminEmails, this.professorEmails);
-    if (derivedRole !== Role.STUDENT) {
+    // INCLUDES, no igualdad: un alumno que además es admin sigue siendo alumno.
+    const derivedRoles = resolveRoles(normalizedEmail, this.adminEmails, this.professorEmails);
+    if (!derivedRoles.includes(Role.STUDENT)) {
       throw new BadRequestException('El correo debe ser de un alumno (@alumnos.ucn.cl)');
     }
 
@@ -185,7 +187,13 @@ export class CoursesService {
       return existing;
     }
     return this.prisma.user.create({
-      data: { email, name: nameFromEmail(email), role: Role.STUDENT, isActive: true },
+      data: {
+        email,
+        name: nameFromEmail(email),
+        role: Role.STUDENT,
+        roles: [Role.STUDENT],
+        isActive: true,
+      },
     });
   }
 
@@ -208,7 +216,8 @@ export class CoursesService {
     const where: Prisma.CourseWhereInput = {};
     if (query.year !== undefined) where.year = query.year;
     if (query.semester !== undefined) where.semester = query.semester;
-    if (user.role === Role.PROFESSOR) {
+    // El admin ve todos los cursos; el profesor (sin ser admin) solo los suyos.
+    if (!hasRole(user, Role.ADMIN) && hasRole(user, Role.PROFESSOR)) {
       where.professors = { some: { professorId: user.id, authorized: true } };
     }
 
@@ -230,7 +239,7 @@ export class CoursesService {
 
   async listTerms(user: AuthenticatedUser) {
     const where: Prisma.CourseWhereInput =
-      user.role === Role.PROFESSOR
+      !hasRole(user, Role.ADMIN) && hasRole(user, Role.PROFESSOR)
         ? { professors: { some: { professorId: user.id, authorized: true } } }
         : {};
 
@@ -327,10 +336,10 @@ export class CoursesService {
     await this.ensureCourseExists(courseId);
 
     const normalizedEmail = email.trim().toLowerCase();
-    const derivedRole = resolveRole(normalizedEmail, this.adminEmails, this.professorEmails);
+    const derivedRoles = resolveRoles(normalizedEmail, this.adminEmails, this.professorEmails);
 
     // Solo dominios de profesor (o un admin) pueden gestionar cursos.
-    if (derivedRole === Role.STUDENT || derivedRole === null) {
+    if (!derivedRoles.includes(Role.PROFESSOR) && !derivedRoles.includes(Role.ADMIN)) {
       throw new BadRequestException('El correo no es de un profesor');
     }
 
@@ -400,7 +409,10 @@ export class CoursesService {
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
-      if (existing.role === Role.STUDENT) {
+      // Con roles múltiples basta con que TENGA PROFESSOR o ADMIN; ser además
+      // estudiante ya no lo descalifica.
+      const roles = existing.roles.length > 0 ? existing.roles : [existing.role];
+      if (!roles.includes(Role.PROFESSOR) && !roles.includes(Role.ADMIN)) {
         throw new BadRequestException('El usuario existe y es un estudiante, no un profesor');
       }
       return existing;
@@ -408,7 +420,13 @@ export class CoursesService {
 
     // Pre-registro: se enlazará con Google en el primer login (googleId null).
     return this.prisma.user.create({
-      data: { email, name: nameFromEmail(email), role: Role.PROFESSOR, isActive: true },
+      data: {
+        email,
+        name: nameFromEmail(email),
+        role: Role.PROFESSOR,
+        roles: [Role.PROFESSOR],
+        isActive: true,
+      },
     });
   }
 

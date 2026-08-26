@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedUser } from '../auth/interfaces/auth.types';
+import { primaryRole, sortByPrivilege } from '../auth/role.util';
 import { ListUsersQueryDto } from './dto/list-users.query.dto';
 
 const PUBLIC_SELECT = {
@@ -9,6 +10,7 @@ const PUBLIC_SELECT = {
   email: true,
   name: true,
   role: true,
+  roles: true,
   isActive: true,
   createdAt: true,
 } satisfies Prisma.UserSelect;
@@ -20,7 +22,8 @@ export class UsersService {
   async list(query: ListUsersQueryDto) {
     const where: Prisma.UserWhereInput = {};
     if (query.role) {
-      where.role = query.role;
+      // `has` sobre el array: un usuario con 2 roles aparece en ambos filtros.
+      where.roles = { has: query.role };
     }
     if (query.search) {
       where.OR = [
@@ -41,7 +44,7 @@ export class UsersService {
     const term = q.trim();
     return this.prisma.user.findMany({
       where: {
-        role: Role.STUDENT,
+        roles: { has: Role.STUDENT },
         ...(term
           ? {
               OR: [
@@ -60,14 +63,14 @@ export class UsersService {
   async setActive(currentUser: AuthenticatedUser, id: string, isActive: boolean) {
     const target = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, role: true },
+      select: { id: true, roles: true },
     });
     if (!target) {
       throw new NotFoundException('Usuario no encontrado');
     }
 
     // Protege contra quedarse sin administradores.
-    if (!isActive && target.role === Role.ADMIN) {
+    if (!isActive && target.roles.includes(Role.ADMIN)) {
       if (target.id === currentUser.id) {
         throw new BadRequestException('No puedes deshabilitar tu propia cuenta');
       }
@@ -77,6 +80,51 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id },
       data: { isActive },
+      select: PUBLIC_SELECT,
+    });
+  }
+
+  /**
+   * Reemplaza el conjunto de roles de un usuario y recalcula el rol principal.
+   *
+   * Dos barreras contra dejar la plataforma sin administración:
+   *  - un admin no puede quitarse ADMIN a sí mismo (se quedaría fuera al instante);
+   *  - no puede desaparecer el último ADMIN activo del sistema.
+   */
+  async updateRoles(currentUser: AuthenticatedUser, id: string, roles: Role[]) {
+    const nextRoles = sortByPrivilege([...new Set(roles)]);
+    if (nextRoles.length === 0) {
+      throw new BadRequestException('El usuario debe tener al menos un rol');
+    }
+
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, roles: true, isActive: true },
+    });
+    if (!target) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const losesAdmin = target.roles.includes(Role.ADMIN) && !nextRoles.includes(Role.ADMIN);
+
+    if (losesAdmin) {
+      if (target.id === currentUser.id) {
+        throw new BadRequestException('No puedes quitarte a ti mismo el rol de administrador');
+      }
+
+      const otherAdmins = await this.prisma.user.count({
+        where: { id: { not: id }, isActive: true, roles: { has: Role.ADMIN } },
+      });
+      if (otherAdmins === 0) {
+        throw new BadRequestException(
+          'No puedes quitar el último administrador activo del sistema',
+        );
+      }
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: { roles: nextRoles, role: primaryRole(nextRoles)! },
       select: PUBLIC_SELECT,
     });
   }

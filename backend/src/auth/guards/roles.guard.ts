@@ -5,7 +5,9 @@ import { ROLES_KEY } from '../decorators/roles.decorator';
 import { AuthenticatedUser } from '../interfaces/auth.types';
 
 /**
- * Compara el rol del usuario autenticado contra los roles exigidos por `@Roles`.
+ * Pasa si el usuario TIENE ALGUNO de los roles exigidos por `@Roles`.
+ * Se evalúa contra `user.roles` (fuente de verdad), no contra el rol principal:
+ * un alumno que además es admin debe pasar por ambas puertas.
  * Si la ruta no declara roles, deja pasar.
  */
 @Injectable()
@@ -25,6 +27,6 @@ export class RolesGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>();
     const user = request.user;
 
-    return !!user && requiredRoles.includes(user.role);
+    return !!user && requiredRoles.some((role) => user.roles.includes(role));
   }
 }
