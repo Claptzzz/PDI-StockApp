@@ -50,14 +50,21 @@ export function useDeleteKit(courseId: string, groupId: string) {
   });
 }
 
+export interface ReturnKitItemInput {
+  kitItemId: string;
+  quantity: number;
+  /** Observación opcional de quien recibe. */
+  note?: string;
+}
+
 export function useReturnKitItem(courseId: string, groupId: string, kitId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ kitItemId, quantity }: { kitItemId: string; quantity: number }) =>
+    mutationFn: async ({ kitItemId, quantity, note }: ReturnKitItemInput) =>
       (
         await api.patch<Kit>(
           `/courses/${courseId}/groups/${groupId}/kits/${kitId}/items/${kitItemId}/return`,
-          { quantity },
+          { quantity, note },
         )
       ).data,
     onSuccess: () => {

@@ -129,6 +129,15 @@ export interface ImportReport {
 
 export type KitStatus = 'ASSIGNED' | 'RETURNED';
 
+/** Un registro de devolución: cantidad, observación, quién la recibió y cuándo. */
+export interface ReturnEvent {
+  id: string;
+  quantity: number;
+  note: string | null;
+  receivedBy: { id: string; name: string };
+  createdAt: string;
+}
+
 export interface KitItem {
   id: string;
   componentId: string | null;
@@ -140,6 +149,10 @@ export interface KitItem {
   verified: boolean;
   /** Discrepancia reportada por el alumno; se registra, no ajusta cantidades. */
   verificationNote: string | null;
+  /** Historial de devoluciones, de la más antigua a la más reciente. */
+  returnEvents: ReturnEvent[];
+  /** Algún evento del historial trae observación. */
+  hasReturnNotes: boolean;
 }
 
 /** Estado de aceptación de condiciones de un integrante del grupo. */
@@ -208,6 +221,8 @@ export interface Loan {
   loanedById: string;
   loanedAt: string;
   returnedAt: string | null;
+  returnEvents: ReturnEvent[];
+  hasReturnNotes: boolean;
 }
 
 // --- Resumen de devoluciones ---
@@ -304,12 +319,16 @@ export interface ReturnsSummary {
     code: string;
     status: KitStatus;
     allReturned: boolean;
+    /** Algún ítem del kit tiene observaciones de devolución. */
+    hasReturnNotes: boolean;
     items: {
       kitItemId: string;
       componentName: string;
       quantity: number;
       returnedQuantity: number;
       pending: number;
+      returnEvents: ReturnEvent[];
+      hasReturnNotes: boolean;
     }[];
   }[];
   loans: {
@@ -318,6 +337,8 @@ export interface ReturnsSummary {
     quantity: number;
     returnedQuantity: number;
     pending: number;
+    returnEvents: ReturnEvent[];
+    hasReturnNotes: boolean;
   }[];
 }
 

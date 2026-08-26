@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ReturnModal } from '@/components/ui/ReturnModal';
+import { ReturnTimeline, ReturnNotesFlag } from '@/components/ui/ReturnTimeline';
 import { ComponentCombobox } from '@/components/ui/ComponentCombobox';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
@@ -26,20 +28,17 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deleting, setDeleting] = useState<Loan | null>(null);
-  const [qty, setQty] = useState<Record<string, string>>({});
+  // Préstamo cuyo modal de devolución está abierto (la nota necesita un textarea).
+  const [returning, setReturning] = useState<Loan | null>(null);
 
-  const doReturn = (loan: Loan) => {
-    const quantity = Number(qty[loan.id] ?? '1');
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > loan.pending) {
-      toast.error(`Cantidad inválida (1 a ${loan.pending}).`);
-      return;
-    }
+  const doReturn = (quantity: number, note: string) => {
+    if (!returning) return;
     returnLoan.mutate(
-      { loanId: loan.id, quantity },
+      { loanId: returning.id, quantity, note: note || undefined },
       {
         onSuccess: () => {
           toast.success('Devolución registrada.');
-          setQty((q) => ({ ...q, [loan.id]: '' }));
+          setReturning(null);
         },
         onError: (err) => toast.error(getApiErrorMessage(err)),
       },
@@ -72,81 +71,11 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
         ) : loans.isError ? (
           <ErrorState message={getApiErrorMessage(loans.error)} />
         ) : loans.data && loans.data.length > 0 ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>Foto</Th>
-                <Th>Componente</Th>
-                <Th>Cant.</Th>
-                <Th>Estado</Th>
-                <Th>Pend.</Th>
-                <Th className="text-right">Acciones</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {loans.data.map((loan) => (
-                <tr key={loan.id}>
-                  <Td>
-                    {loan.signedUrl ? (
-                      <a href={loan.signedUrl} target="_blank" rel="noreferrer">
-                        <img
-                          src={loan.signedUrl}
-                          alt="evidencia"
-                          className="h-10 w-10 rounded object-cover"
-                        />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-text-muted">—</span>
-                    )}
-                  </Td>
-                  <Td className="font-semibold">
-                    {loan.componentName}
-                    {loan.note && (
-                      <span className="block text-xs font-normal text-text-muted">{loan.note}</span>
-                    )}
-                  </Td>
-                  <Td>{loan.quantity}</Td>
-                  <Td>
-                    <Badge tone={LOAN_TONE[loan.status]}>{loan.status}</Badge>
-                  </Td>
-                  <Td>
-                    <span
-                      className={loan.pending > 0 ? 'font-semibold text-warning' : 'text-success'}
-                    >
-                      {loan.pending}
-                    </span>
-                  </Td>
-                  <Td className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {loan.pending > 0 && (
-                        <>
-                          <input
-                            type="number"
-                            min={1}
-                            max={loan.pending}
-                            value={qty[loan.id] ?? ''}
-                            placeholder={String(loan.pending)}
-                            onChange={(e) => setQty((q) => ({ ...q, [loan.id]: e.target.value }))}
-                            className="w-16 rounded-[var(--radius)] border border-border px-2 py-1 text-sm"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => doReturn(loan)}
-                            disabled={returnLoan.isPending}
-                          >
-                            Devolver
-                          </Button>
-                        </>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => setDeleting(loan)}>
-                        Eliminar
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          <LoanList
+            loans={loans.data}
+            onReturn={setReturning}
+            onDelete={setDeleting}
+          />
         ) : (
           <EmptyState message="Este grupo aún no tiene préstamos adicionales." />
         )}
@@ -157,6 +86,16 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
           courseId={courseId}
           groupId={groupId}
           onClose={() => setCreateOpen(false)}
+        />
+      )}
+
+      {returning && (
+        <ReturnModal
+          componentName={returning.componentName}
+          pending={returning.pending}
+          loading={returnLoan.isPending}
+          onConfirm={doReturn}
+          onClose={() => setReturning(null)}
         />
       )}
 
@@ -173,6 +112,150 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
         onCancel={() => setDeleting(null)}
       />
     </div>
+  );
+}
+
+/** Miniatura de la foto de evidencia (o marcador si no hay). */
+function LoanPhoto({ loan, size = 'h-10 w-10' }: { loan: Loan; size?: string }) {
+  if (!loan.signedUrl) {
+    return <span className="text-xs text-text-muted">—</span>;
+  }
+  return (
+    <a href={loan.signedUrl} target="_blank" rel="noreferrer" className="shrink-0">
+      <img src={loan.signedUrl} alt="evidencia" className={`${size} rounded object-cover`} />
+    </a>
+  );
+}
+
+/** Historial de devoluciones del préstamo, con el flag de observaciones. */
+function LoanHistory({ loan }: { loan: Loan }) {
+  if (loan.returnEvents.length === 0) return null;
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+          Historial de devoluciones
+        </span>
+        {loan.hasReturnNotes && <ReturnNotesFlag />}
+      </div>
+      <ReturnTimeline events={loan.returnEvents} className="mt-1.5" />
+    </div>
+  );
+}
+
+interface LoanListProps {
+  loans: Loan[];
+  onReturn: (loan: Loan) => void;
+  onDelete: (loan: Loan) => void;
+}
+
+/**
+ * Tarjetas apiladas en móvil, tabla desde `sm`. La tabla necesita scroll
+ * horizontal a 375px y eso arrastraría la timeline fuera de la pantalla.
+ */
+function LoanList({ loans, onReturn, onDelete }: LoanListProps) {
+  const actions = (loan: Loan) => (
+    <div className="flex flex-wrap items-center justify-end gap-1">
+      {loan.pending > 0 && (
+        <Button size="sm" onClick={() => onReturn(loan)}>
+          Devolver
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" onClick={() => onDelete(loan)}>
+        Eliminar
+      </Button>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Móvil */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        {loans.map((loan) => (
+          <div
+            key={loan.id}
+            className="min-w-0 rounded-[var(--radius-card)] border border-border bg-surface-card p-3"
+          >
+            <div className="flex min-w-0 items-start gap-3">
+              <LoanPhoto loan={loan} size="h-12 w-12" />
+              <div className="min-w-0 flex-1">
+                <p className="break-words font-semibold text-text-primary">{loan.componentName}</p>
+                {loan.note && (
+                  <p className="break-words text-xs text-text-muted">{loan.note}</p>
+                )}
+                <p className="mt-0.5 text-xs text-text-secondary">
+                  {loan.returnedQuantity}/{loan.quantity} devuelto(s) · pendiente{' '}
+                  <span
+                    className={loan.pending > 0 ? 'font-semibold text-warning' : 'text-success'}
+                  >
+                    {loan.pending}
+                  </span>
+                </p>
+              </div>
+              <Badge tone={LOAN_TONE[loan.status]}>{loan.status}</Badge>
+            </div>
+
+            {loan.returnEvents.length > 0 && (
+              <div className="mt-2 border-t border-border pt-2">
+                <LoanHistory loan={loan} />
+              </div>
+            )}
+            <div className="mt-2 border-t border-border pt-2">{actions(loan)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop */}
+      <div className="hidden sm:block">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Foto</Th>
+              <Th>Componente</Th>
+              <Th>Cant.</Th>
+              <Th>Estado</Th>
+              <Th>Pend.</Th>
+              <Th className="text-right">Acciones</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {loans.flatMap((loan) => [
+              <tr key={loan.id}>
+                <Td>
+                  <LoanPhoto loan={loan} />
+                </Td>
+                <Td className="font-semibold">
+                  {loan.componentName}
+                  {loan.note && (
+                    <span className="block text-xs font-normal text-text-muted">{loan.note}</span>
+                  )}
+                </Td>
+                <Td>{loan.quantity}</Td>
+                <Td>
+                  <Badge tone={LOAN_TONE[loan.status]}>{loan.status}</Badge>
+                </Td>
+                <Td>
+                  <span
+                    className={loan.pending > 0 ? 'font-semibold text-warning' : 'text-success'}
+                  >
+                    {loan.pending}
+                  </span>
+                </Td>
+                <Td className="text-right">{actions(loan)}</Td>
+              </tr>,
+              // Fila extra con el historial, solo si hay devoluciones registradas.
+              loan.returnEvents.length > 0 && (
+                <tr key={`${loan.id}-history`}>
+                  <Td colSpan={6} className="bg-gray-50">
+                    <LoanHistory loan={loan} />
+                  </Td>
+                </tr>
+              ),
+            ])}
+          </tbody>
+        </Table>
+      </div>
+    </>
   );
 }
 

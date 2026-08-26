@@ -8,6 +8,11 @@ import { KitStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { GroupsService } from '../groups/groups.service';
 import { StockService } from '../components/stock.service';
+import {
+  ReturnEventsService,
+  RETURN_EVENT_SELECT,
+  hasReturnNotes,
+} from '../returns/return-events.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
 
 /**
@@ -49,6 +54,7 @@ export class KitsService {
     private readonly prisma: PrismaService,
     private readonly groupsService: GroupsService,
     private readonly stock: StockService,
+    private readonly returnEvents: ReturnEventsService,
   ) {}
 
   async assign(courseId: string, groupId: string, dto: AssignKitDto) {
@@ -236,6 +242,8 @@ export class KitsService {
     kitId: string,
     kitItemId: string,
     quantity: number,
+    receivedById: string,
+    note?: string | null,
   ) {
     await this.groupsService.ensureGroupInCourse(courseId, groupId);
     await this.assertKitInGroup(kitId, groupId);
@@ -258,6 +266,9 @@ export class KitsService {
         data: { returnedQuantity: item.returnedQuantity + quantity },
       });
 
+      // Mismo $transaction: el historial no puede divergir del contador.
+      await this.returnEvents.record({ kitItemId, quantity, note, receivedById }, tx);
+
       const items = await tx.kitItem.findMany({
         where: { kitId },
         select: { quantity: true, returnedQuantity: true },
@@ -279,13 +290,21 @@ export class KitsService {
   async returnsSummary(courseId: string, groupId: string) {
     await this.groupsService.ensureGroupInCourse(courseId, groupId);
 
+    const eventsInclude = {
+      returnEvents: { orderBy: { createdAt: 'asc' }, select: RETURN_EVENT_SELECT },
+    } satisfies Prisma.KitItemInclude & Prisma.LoanInclude;
+
     const [kits, loans] = await Promise.all([
       this.prisma.kit.findMany({
         where: { groupId },
-        include: { items: { orderBy: { componentName: 'asc' } } },
+        include: { items: { orderBy: { componentName: 'asc' }, include: eventsInclude } },
         orderBy: { assignedAt: 'desc' },
       }),
-      this.prisma.loan.findMany({ where: { groupId }, orderBy: { loanedAt: 'desc' } }),
+      this.prisma.loan.findMany({
+        where: { groupId },
+        orderBy: { loanedAt: 'desc' },
+        include: eventsInclude,
+      }),
     ]);
 
     const kitSummaries = kits.map((kit) => {
@@ -295,12 +314,16 @@ export class KitsService {
         quantity: it.quantity,
         returnedQuantity: it.returnedQuantity,
         pending: it.quantity - it.returnedQuantity,
+        returnEvents: it.returnEvents,
+        hasReturnNotes: hasReturnNotes(it.returnEvents),
       }));
       return {
         kitId: kit.id,
         code: kit.code,
         status: kit.status,
         allReturned: items.every((it) => it.pending === 0),
+        // Para destacar el kit completo de un vistazo al cierre de semestre.
+        hasReturnNotes: items.some((it) => it.hasReturnNotes),
         items,
       };
     });
@@ -311,6 +334,8 @@ export class KitsService {
       quantity: loan.quantity,
       returnedQuantity: loan.returnedQuantity,
       pending: loan.quantity - loan.returnedQuantity,
+      returnEvents: loan.returnEvents,
+      hasReturnNotes: hasReturnNotes(loan.returnEvents),
     }));
 
     const allReturned =
@@ -370,7 +395,10 @@ export class KitsService {
       where: { id: kitId },
       include: {
         _count: { select: { items: true } },
-        items: { orderBy: { componentName: 'asc' } },
+        items: {
+          orderBy: { componentName: 'asc' },
+          include: { returnEvents: { orderBy: { createdAt: 'asc' }, select: RETURN_EVENT_SELECT } },
+        },
         verifiedBy: { select: { id: true, name: true } },
         acceptances: { select: { studentId: true, acceptedAt: true, termsVersion: true } },
         group: {
@@ -417,6 +445,8 @@ export class KitsService {
         pending: it.quantity - it.returnedQuantity,
         verified: it.verified,
         verificationNote: it.verificationNote,
+        returnEvents: it.returnEvents,
+        hasReturnNotes: hasReturnNotes(it.returnEvents),
       })),
       verifiedBy: kit.verifiedBy,
       // Mismos flags resumidos que los listados, para que el shape no diverja.

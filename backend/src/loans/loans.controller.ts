@@ -68,8 +68,16 @@ export class LoansController {
     @Param('groupId') groupId: string,
     @Param('loanId') loanId: string,
     @Body() dto: ReturnLoanDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.loansService.returnPartial(courseId, groupId, loanId, dto.quantity);
+    return this.loansService.returnPartial(
+      courseId,
+      groupId,
+      loanId,
+      dto.quantity,
+      user.id,
+      dto.note,
+    );
   }
 
   @Delete(':loanId')

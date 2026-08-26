@@ -11,7 +11,7 @@ import {
 import { useKitTemplates } from '@/api/templates';
 import { useComponents } from '@/api/components';
 import { getApiErrorMessage } from '@/lib/errors';
-import type { Kit, KitStatus, Shortage } from '@/lib/apiTypes';
+import type { Kit, KitItem, KitStatus, Shortage } from '@/lib/apiTypes';
 import { formatDateTime } from '@/lib/format';
 import { useToast } from '@/store/toast';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
@@ -21,6 +21,8 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ReturnModal } from '@/components/ui/ReturnModal';
+import { ReturnTimeline, ReturnNotesFlag } from '@/components/ui/ReturnTimeline';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 const KIT_TONE: Record<KitStatus, BadgeTone> = { ASSIGNED: 'ambar', RETURNED: 'success' };
@@ -366,20 +368,17 @@ function KitDetailModal({
   const toast = useToast();
   const kit = useKit(courseId, groupId, kitId);
   const returnItem = useReturnKitItem(courseId, groupId, kitId);
-  const [qty, setQty] = useState<Record<string, string>>({});
+  // Ítem cuyo modal de devolución está abierto (la nota necesita un textarea).
+  const [returning, setReturning] = useState<KitItem | null>(null);
 
-  const doReturn = (kitItemId: string, pending: number) => {
-    const quantity = Number(qty[kitItemId] ?? '1');
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > pending) {
-      toast.error(`Cantidad inválida (1 a ${pending}).`);
-      return;
-    }
+  const doReturn = (quantity: number, note: string) => {
+    if (!returning) return;
     returnItem.mutate(
-      { kitItemId, quantity },
+      { kitItemId: returning.id, quantity, note: note || undefined },
       {
         onSuccess: () => {
           toast.success('Devolución registrada.');
-          setQty((q) => ({ ...q, [kitItemId]: '' }));
+          setReturning(null);
         },
         onError: (err) => toast.error(getApiErrorMessage(err)),
       },
@@ -412,59 +411,53 @@ function KitDetailModal({
           <AcceptancePanel kit={kit.data} />
 
           <h4 className="mt-1 text-sm font-bold text-text-primary">Devoluciones</h4>
-          <Table>
-            <thead>
-              <tr>
-                <Th>Componente</Th>
-                <Th>Cant.</Th>
-                <Th>Devuelto</Th>
-                <Th>Pend.</Th>
-                <Th className="text-right">Devolver</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {kit.data.items.map((it) => (
-                <tr key={it.id}>
-                  <Td className="font-semibold">{it.componentName}</Td>
-                  <Td>{it.quantity}</Td>
-                  <Td>{it.returnedQuantity}</Td>
-                  <Td>
-                    <span
-                      className={it.pending > 0 ? 'text-warning font-semibold' : 'text-success'}
-                    >
-                      {it.pending}
-                    </span>
-                  </Td>
-                  <Td className="text-right">
-                    {it.pending > 0 ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number"
-                          min={1}
-                          max={it.pending}
-                          value={qty[it.id] ?? ''}
-                          placeholder={String(it.pending)}
-                          onChange={(e) => setQty((q) => ({ ...q, [it.id]: e.target.value }))}
-                          className="w-16 rounded-[var(--radius)] border border-border px-2 py-1 text-sm"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => doReturn(it.id, it.pending)}
-                          disabled={returnItem.isPending}
-                        >
-                          OK
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-success">Completo</span>
-                    )}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
+          {/* Tarjetas apiladas: la timeline no cabe dentro de una tabla en móvil. */}
+          <div className="flex flex-col gap-2">
+            {kit.data.items.map((it) => (
+              <div
+                key={it.id}
+                className="min-w-0 rounded-[var(--radius)] border border-border p-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-text-primary">
+                      {it.componentName}
+                    </p>
+                    <p className="text-xs text-text-secondary">
+                      {it.returnedQuantity} de {it.quantity} devuelto(s) ·{' '}
+                      <span
+                        className={it.pending > 0 ? 'font-semibold text-warning' : 'text-success'}
+                      >
+                        {it.pending} pendiente(s)
+                      </span>
+                    </p>
+                  </div>
+                  {it.pending > 0 ? (
+                    <Button size="sm" onClick={() => setReturning(it)}>
+                      Devolver
+                    </Button>
+                  ) : (
+                    <span className="text-xs font-semibold text-success">Completo</span>
+                  )}
+                </div>
+
+                {it.hasReturnNotes && <ReturnNotesFlag className="mt-2" />}
+                <ReturnTimeline events={it.returnEvents} className="mt-2" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
+
+      {returning && (
+        <ReturnModal
+          componentName={returning.componentName}
+          pending={returning.pending}
+          loading={returnItem.isPending}
+          onConfirm={doReturn}
+          onClose={() => setReturning(null)}
+        />
+      )}
     </Modal>
   );
 }

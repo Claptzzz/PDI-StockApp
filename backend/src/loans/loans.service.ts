@@ -4,6 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GroupsService } from '../groups/groups.service';
 import { StockService } from '../components/stock.service';
 import { StorageService } from '../storage/storage.service';
+import {
+  ReturnEventsService,
+  RETURN_EVENT_SELECT,
+  hasReturnNotes,
+  type ReturnEventResponse,
+} from '../returns/return-events.service';
 import { CreateLoanDto } from './dto/create-loan.dto';
 
 export type LoanStatus = 'PENDIENTE' | 'PARCIAL' | 'DEVUELTO';
@@ -21,6 +27,7 @@ export class LoansService {
     private readonly groupsService: GroupsService,
     private readonly stock: StockService,
     private readonly storage: StorageService,
+    private readonly returnEvents: ReturnEventsService,
   ) {}
 
   async create(
@@ -109,16 +116,27 @@ export class LoansService {
       where: { groupId },
       orderBy: { loanedAt: 'desc' },
     });
-    return Promise.all(loans.map((loan) => this.toResponse(loan)));
+
+    // Una sola query para el historial de todos los préstamos (evita N+1).
+    const eventsByLoan = await this.returnEvents.byLoanIds(loans.map((l) => l.id));
+
+    return Promise.all(loans.map((loan) => this.toResponse(loan, eventsByLoan.get(loan.id) ?? [])));
   }
 
   async getOne(courseId: string, groupId: string, loanId: string) {
     await this.groupsService.ensureGroupInCourse(courseId, groupId);
     const loan = await this.assertLoanInGroup(loanId, groupId);
-    return this.toResponse(loan);
+    return this.toResponse(loan, await this.loadEvents(loanId));
   }
 
-  async returnPartial(courseId: string, groupId: string, loanId: string, quantity: number) {
+  async returnPartial(
+    courseId: string,
+    groupId: string,
+    loanId: string,
+    quantity: number,
+    receivedById: string,
+    note?: string | null,
+  ) {
     await this.groupsService.ensureGroupInCourse(courseId, groupId);
     const loan = await this.assertLoanInGroup(loanId, groupId);
 
@@ -130,16 +148,22 @@ export class LoansService {
     }
 
     const newReturned = loan.returnedQuantity + quantity;
-    const updated = await this.prisma.loan.update({
-      where: { id: loanId },
-      data: {
-        returnedQuantity: newReturned,
-        // Marca la fecha de devolución solo cuando se completa el total.
-        ...(newReturned >= loan.quantity && !loan.returnedAt ? { returnedAt: new Date() } : {}),
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.loan.update({
+        where: { id: loanId },
+        data: {
+          returnedQuantity: newReturned,
+          // Marca la fecha de devolución solo cuando se completa el total.
+          ...(newReturned >= loan.quantity && !loan.returnedAt ? { returnedAt: new Date() } : {}),
+        },
+      });
+
+      // Mismo $transaction: el historial no puede divergir del contador.
+      await this.returnEvents.record({ loanId, quantity, note, receivedById }, tx);
+      return result;
     });
 
-    return this.toResponse(updated);
+    return this.toResponse(updated, await this.loadEvents(loanId));
   }
 
   async remove(courseId: string, groupId: string, loanId: string) {
@@ -163,7 +187,15 @@ export class LoansService {
     return loan;
   }
 
-  private async toResponse(loan: Loan) {
+  private async loadEvents(loanId: string): Promise<ReturnEventResponse[]> {
+    return this.prisma.returnEvent.findMany({
+      where: { loanId },
+      orderBy: { createdAt: 'asc' },
+      select: RETURN_EVENT_SELECT,
+    });
+  }
+
+  private async toResponse(loan: Loan, returnEvents: ReturnEventResponse[] = []) {
     const signedUrl = loan.photoUrl ? await this.storage.getSignedUrl(loan.photoUrl) : null;
     return {
       id: loan.id,
@@ -179,6 +211,8 @@ export class LoansService {
       loanedById: loan.loanedById,
       loanedAt: loan.loanedAt,
       returnedAt: loan.returnedAt,
+      returnEvents,
+      hasReturnNotes: hasReturnNotes(returnEvents),
     };
   }
 }
