@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import type { AuthenticatedUser } from '../interfaces/auth.types';
+import { hasRole, type AuthenticatedUser } from '../interfaces/auth.types';
 
 /**
  * Lectura del catálogo (componentes / plantillas): permite ADMIN, PROFESSOR, o
@@ -15,7 +15,7 @@ export class CatalogReadGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<{ user: AuthenticatedUser }>();
     const user = request.user;
 
-    if (user.role === Role.ADMIN || user.role === Role.PROFESSOR) {
+    if (hasRole(user, Role.ADMIN, Role.PROFESSOR)) {
       return true;
     }
 

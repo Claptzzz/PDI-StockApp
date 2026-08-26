@@ -5,11 +5,11 @@ import { Role, User } from '@prisma/client';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from './interfaces/auth.types';
-import { resolveRole } from './role.util';
+import { primaryRole, resolveRoles, unionRoles } from './role.util';
 
 export interface GoogleLoginResult {
   accessToken: string;
-  user: { id: string; email: string; name: string; role: Role };
+  user: { id: string; email: string; name: string; role: Role; roles: Role[] };
 }
 
 @Injectable()
@@ -40,19 +40,30 @@ export class AuthService {
     }
     const name = payload.name?.trim() || email;
 
-    const derivedRole = resolveRole(email, this.adminEmails, this.professorEmails);
-    if (derivedRole === null) {
+    const derivedRoles = resolveRoles(email, this.adminEmails, this.professorEmails);
+    if (derivedRoles.length === 0) {
       throw new ForbiddenException('Correo institucional no válido');
     }
 
-    const user = await this.linkOrCreateUser(email, name, derivedRole, payload.sub);
+    const user = await this.linkOrCreateUser(email, name, derivedRoles, payload.sub);
 
-    const jwtPayload: JwtPayload = { sub: user.id, email: user.email, role: user.role };
+    const jwtPayload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      roles: user.roles,
+      role: user.role,
+    };
     const accessToken = await this.jwtService.signAsync(jwtPayload);
 
     return {
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        roles: user.roles,
+      },
     };
   }
 
@@ -82,13 +93,14 @@ export class AuthService {
    * Enlaza el login de Google a un User existente o lo crea.
    * - Si existe con `googleId` null, lo enlaza (primer login de una cuenta
    *   pre-registrada por seed/CSV).
-   * - Nunca degrada el rol de un usuario existente (protege a un ADMIN sembrado).
+   * - Los roles se UNEN, nunca se quitan: un rol otorgado a mano por un admin
+   *   sobrevive aunque el allowlist ya no lo incluya.
    * - Rechaza cuentas deshabilitadas.
    */
   private async linkOrCreateUser(
     email: string,
     name: string,
-    derivedRole: Role,
+    derivedRoles: Role[],
     googleId: string,
   ): Promise<User> {
     const existing = await this.prisma.user.findUnique({ where: { email } });
@@ -98,15 +110,21 @@ export class AuthService {
         throw new ForbiddenException('Cuenta deshabilitada');
       }
 
-      const data: { googleId?: string; role?: Role } = {};
+      // Filas anteriores al backfill podrían traer `roles` vacío: se cae a `role`.
+      const currentRoles = existing.roles.length > 0 ? existing.roles : [existing.role];
+      const merged = unionRoles(currentRoles, derivedRoles);
+
+      const data: { googleId?: string; roles?: Role[]; role?: Role } = {};
       // Enlaza el googleId en el primer login si aún no estaba.
       if (!existing.googleId) {
         data.googleId = googleId;
       }
-      // Promueve si el rol derivado por los allowlists es más fuerte que el actual.
-      // Orden de fuerza: ADMIN > PROFESSOR > STUDENT. Nunca degrada.
-      if (ROLE_RANK[derivedRole] > ROLE_RANK[existing.role]) {
-        data.role = derivedRole;
+      if (!sameRoles(currentRoles, merged)) {
+        data.roles = merged;
+      }
+      const nextPrimary = primaryRole(merged) ?? existing.role;
+      if (nextPrimary !== existing.role) {
+        data.role = nextPrimary;
       }
 
       if (Object.keys(data).length > 0) {
@@ -117,16 +135,21 @@ export class AuthService {
     }
 
     return this.prisma.user.create({
-      data: { email, name, role: derivedRole, googleId },
+      data: {
+        email,
+        name,
+        roles: derivedRoles,
+        role: primaryRole(derivedRoles)!,
+        googleId,
+      },
     });
   }
 }
 
-const ROLE_RANK: Record<Role, number> = {
-  [Role.STUDENT]: 1,
-  [Role.PROFESSOR]: 2,
-  [Role.ADMIN]: 3,
-};
+/** Compara dos listas de roles como conjuntos (ya vienen ordenadas por privilegio). */
+function sameRoles(a: Role[], b: Role[]): boolean {
+  return a.length === b.length && a.every((r) => b.includes(r));
+}
 
 function parseEmailList(raw: string | undefined): string[] {
   return (raw ?? '')

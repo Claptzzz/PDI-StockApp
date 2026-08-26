@@ -12,11 +12,13 @@ import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
 import { GroupPage } from '@/pages/profesor/GroupPage';
 import { StudentPage } from '@/pages/estudiante/StudentPage';
 import { useAuth } from '@/store/auth';
-import { dashboardPath } from '@/lib/types';
+import { dashboardPath, primaryRole, userRoles } from '@/lib/types';
 
 function RootRedirect() {
   const { user } = useAuth();
-  return <Navigate to={user ? dashboardPath(user.role) : '/login'} replace />;
+  // Rol PRINCIPAL: con varios roles, entra por el de mayor privilegio.
+  const home = primaryRole(userRoles(user));
+  return <Navigate to={home ? dashboardPath(home) : '/login'} replace />;
 }
 
 function App() {

@@ -6,6 +6,7 @@ import type { AuthenticatedUser } from '../auth/interfaces/auth.types';
 import { UsersService } from './users.service';
 import { ListUsersQueryDto } from './dto/list-users.query.dto';
 import { UpdateUserActiveDto } from './dto/update-user-active.dto';
+import { UpdateUserRolesDto } from './dto/update-user-roles.dto';
 
 @Controller('users')
 @Roles(Role.ADMIN)
@@ -22,6 +23,15 @@ export class UsersController {
   @Roles(Role.ADMIN, Role.PROFESSOR)
   searchStudents(@Query('q') q?: string) {
     return this.usersService.searchStudents(q ?? '');
+  }
+
+  @Patch(':id/roles')
+  updateRoles(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserRolesDto,
+  ) {
+    return this.usersService.updateRoles(user, id, dto.roles);
   }
 
   @Patch(':id/active')

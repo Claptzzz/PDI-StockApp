@@ -4,7 +4,9 @@ export interface UserAccount {
   id: string;
   email: string;
   name: string;
+  /** Rol principal derivado (mayor privilegio de `roles`). */
   role: Role;
+  roles: Role[];
   isActive: boolean;
   createdAt: string;
 }

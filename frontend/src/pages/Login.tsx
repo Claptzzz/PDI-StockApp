@@ -4,7 +4,7 @@ import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import axios from 'axios';
 import { api } from '@/lib/api';
 import { useAuth } from '@/store/auth';
-import { dashboardPath, type User } from '@/lib/types';
+import { dashboardPath, primaryRole, userRoles, type User } from '@/lib/types';
 import ucnLogo from '@/assets/UCN_y_texto.png';
 
 interface GoogleLoginResponse {
@@ -33,7 +33,8 @@ export function Login() {
       try {
         const { data } = await api.post<GoogleLoginResponse>('/auth/google', { idToken });
         setSession(data.accessToken, data.user);
-        navigate(dashboardPath(data.user.role), { replace: true });
+        const home = primaryRole(userRoles(data.user)) ?? data.user.role;
+        navigate(dashboardPath(home), { replace: true });
       } catch (err) {
         if (axios.isAxiosError(err)) {
           const status = err.response?.status;

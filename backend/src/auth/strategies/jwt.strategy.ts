@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthenticatedUser, JwtPayload } from '../interfaces/auth.types';
+import { primaryRole } from '../role.util';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -26,6 +27,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Usuario no válido o cuenta deshabilitada');
     }
 
-    return { id: user.id, email: user.email, role: user.role };
+    // `roles` es la fuente de verdad; si por algún motivo llegara vacío (fila previa
+    // al backfill), se cae al rol principal para no dejar al usuario sin permisos.
+    const roles = user.roles.length > 0 ? user.roles : [user.role];
+
+    return {
+      id: user.id,
+      email: user.email,
+      roles,
+      role: primaryRole(roles) ?? user.role,
+    };
   }
 }

@@ -30,7 +30,9 @@ export class MetricsService {
         this.prisma.group.count({ where: { course: where } }),
         this.prisma.user.count({
           where: {
-            role: Role.STUDENT,
+            // `roles has` y no `role`: un alumno que además es admin tiene rol
+            // principal ADMIN pero sigue contando como estudiante del curso.
+            roles: { has: Role.STUDENT },
             isActive: true,
             groupMemberships: { some: { group: { course: where } } },
           },

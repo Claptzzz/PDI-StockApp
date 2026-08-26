@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/store/auth';
-import { dashboardPath, type Role } from '@/lib/types';
+import { dashboardPath, hasAnyRole, primaryRole, userRoles, type Role } from '@/lib/types';
 
 /**
- * Restringe una ruta a ciertos roles. Si el rol del usuario no está permitido,
- * lo redirige a su propio dashboard (no puede ver rutas de otro rol).
+ * Restringe una ruta a ciertos roles. Pasa si el usuario tiene ALGUNO de ellos
+ * (un usuario con [STUDENT, ADMIN] entra tanto a /estudiante como a /admin/*).
+ * Si no, lo manda al dashboard de su rol principal.
  */
 export function RoleRoute({ roles, children }: { roles: Role[]; children?: ReactNode }) {
   const { user } = useAuth();
@@ -14,8 +15,9 @@ export function RoleRoute({ roles, children }: { roles: Role[]; children?: React
     return <Navigate to="/login" replace />;
   }
 
-  if (!roles.includes(user.role)) {
-    return <Navigate to={dashboardPath(user.role)} replace />;
+  if (!hasAnyRole(user, roles)) {
+    const home = primaryRole(userRoles(user));
+    return <Navigate to={home ? dashboardPath(home) : '/login'} replace />;
   }
 
   return <>{children ?? <Outlet />}</>;
