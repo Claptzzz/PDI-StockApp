@@ -10,7 +10,9 @@ import { MetricsPage } from '@/pages/admin/MetricsPage';
 import { ProfesorCoursesPage } from '@/pages/profesor/CoursesPage';
 import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
 import { GroupPage } from '@/pages/profesor/GroupPage';
-import { StudentPage } from '@/pages/estudiante/StudentPage';
+import { StudentCoursesPage } from '@/pages/estudiante/StudentCoursesPage';
+import { StudentCourseDetailPage } from '@/pages/estudiante/StudentCourseDetailPage';
+import { AssistantGroupPage } from '@/pages/estudiante/AssistantGroupPage';
 import { useAuth } from '@/store/auth';
 import { dashboardPath, primaryRole, userRoles } from '@/lib/types';
 
@@ -44,14 +46,14 @@ function App() {
             <Route path="cursos/:courseId" element={<CourseDetailPage />} />
             <Route path="cursos/:courseId/grupos/:groupId" element={<GroupPage />} />
           </Route>
-          <Route
-            path="/estudiante"
-            element={
-              <RoleRoute roles={['STUDENT']}>
-                <StudentPage />
-              </RoleRoute>
-            }
-          />
+          <Route path="/estudiante" element={<RoleRoute roles={['STUDENT']} />}>
+            <Route index element={<StudentCoursesPage />} />
+            <Route path="cursos/:courseId" element={<StudentCourseDetailPage />} />
+            <Route
+              path="cursos/:courseId/grupos/:groupId"
+              element={<AssistantGroupPage />}
+            />
+          </Route>
         </Route>
       </Route>
 
