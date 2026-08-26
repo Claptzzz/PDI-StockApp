@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import type { KitStatus, LoanStatus, MyGroupDetail } from '@/lib/apiTypes';
 import { formatPeriod } from '@/lib/format';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Table, Td, Th } from '@/components/ui/Table';
+import { KitVerificationCard } from './KitVerificationCard';
 
 const KIT_TONE: Record<KitStatus, BadgeTone> = { ASSIGNED: 'ambar', RETURNED: 'success' };
 const kitLabel: Record<KitStatus, string> = { ASSIGNED: 'Asignado', RETURNED: 'Devuelto' };
@@ -13,11 +16,19 @@ const LOAN_TONE: Record<LoanStatus, BadgeTone> = {
 
 /** Detalle de grupo en SOLO LECTURA para el alumno (vista 4d). */
 export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
+  // Kit que dispara el aviso prominente: se abre su modal de verificación.
+  const [autoVerifyKitId, setAutoVerifyKitId] = useState<string | null>(null);
+
   const kitPending = data.kits.reduce(
     (sum, k) => sum + k.items.reduce((s, it) => s + it.pending, 0),
     0,
   );
   const loanPending = data.loans.reduce((sum, l) => sum + l.pending, 0);
+
+  // Solo los kits vigentes exigen acción; un kit devuelto ya no.
+  const activeKits = data.kits.filter((k) => k.status === 'ASSIGNED');
+  const unverified = activeKits.filter((k) => !k.isVerified);
+  const toAccept = activeKits.filter((k) => k.isVerified && !k.hasAccepted);
 
   return (
     <div className="flex flex-col gap-5">
@@ -27,6 +38,36 @@ export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
           {data.course.name} · {formatPeriod(data.course.year, data.course.semester)}
         </p>
       </div>
+
+      {unverified.length > 0 && (
+        <div className="rounded-[var(--radius-card)] border-2 border-warning bg-warning/10 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-base font-bold text-ocre">Debes verificar tu kit</p>
+              <p className="mt-1 text-sm text-text-secondary">
+                Revisa ítem por ítem que el kit {unverified.map((k) => k.code).join(', ')} venga
+                completo. Basta con que lo haga un integrante del grupo.
+              </p>
+            </div>
+            <Button
+              className="w-full shrink-0 sm:w-auto"
+              onClick={() => setAutoVerifyKitId(unverified[0].id)}
+            >
+              Verificar ahora
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {unverified.length === 0 && toAccept.length > 0 && (
+        <div className="rounded-[var(--radius-card)] border-2 border-primary bg-primary/5 p-4">
+          <p className="text-base font-bold text-primary">Falta que aceptes las condiciones</p>
+          <p className="mt-1 text-sm text-text-secondary">
+            El kit ya fue verificado. Cada integrante debe aceptar las condiciones de préstamo por
+            su cuenta; revisa el bloque «Condiciones de préstamo» más abajo.
+          </p>
+        </div>
+      )}
 
       {data.allReturned ? (
         <div className="rounded-[var(--radius)] border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold text-success">
@@ -59,13 +100,25 @@ export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
           <p className="text-sm text-text-muted">Aún no tienes un kit asignado.</p>
         ) : (
           <div className="flex flex-col gap-4">
+            {/* Verificación + condiciones, por kit. */}
+            {data.kits.map((kit) => (
+              <KitVerificationCard
+                key={`verify-${kit.id}`}
+                kitId={kit.id}
+                verifyRequested={autoVerifyKitId === kit.id}
+                onVerifyClose={() => setAutoVerifyKitId(null)}
+              />
+            ))}
+
             {data.kits.map((kit) => (
               <div
                 key={kit.id}
                 className="rounded-[var(--radius-card)] border border-border bg-surface-card p-4"
               >
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="font-semibold text-text-primary">Kit {kit.code}</span>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-semibold text-text-primary">
+                    Kit {kit.code} · devoluciones
+                  </span>
                   <Badge tone={KIT_TONE[kit.status]}>{kitLabel[kit.status]}</Badge>
                 </div>
                 <Table>

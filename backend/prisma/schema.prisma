@@ -33,6 +33,8 @@ model User {
   coursesTaught    CourseProfessor[]
   loansGiven       Loan[]            @relation("LoanGivenBy")
   assistantRoles   CourseAssistant[] @relation("CourseAssistant")
+  kitAcceptances   KitAcceptance[]   @relation("KitAcceptance")
+  kitsVerified     Kit[]             @relation("KitVerifiedBy")
 }
 
 model Course {
@@ -156,7 +158,13 @@ model Kit {
   assignedAt DateTime     @default(now())
   returnedAt DateTime?
 
-  items KitItem[]
+  /// Verificacion GRUPAL de la entrega: la hace un integrante, una sola vez.
+  verifiedAt   DateTime?
+  verifiedById String?
+  verifiedBy   User?     @relation("KitVerifiedBy", fields: [verifiedById], references: [id])
+
+  items       KitItem[]
+  acceptances KitAcceptance[]
 
   @@unique([code, courseId])
 }
@@ -170,6 +178,25 @@ model KitItem {
   componentName    String
   quantity         Int
   returnedQuantity Int        @default(0)
+
+  /// Marcado por el alumno en la verificacion de entrega ("recibido conforme").
+  verified         Boolean    @default(false)
+  /// Discrepancia reportada por el alumno. Se registra, NO ajusta cantidades ni stock.
+  verificationNote String?
+}
+
+/// Aceptacion INDIVIDUAL de las condiciones de prestamo: una fila por integrante.
+model KitAcceptance {
+  id           String   @id @default(cuid())
+  kit          Kit      @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  kitId        String
+  student      User     @relation("KitAcceptance", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId    String
+  acceptedAt   DateTime @default(now())
+  /// Version del texto de condiciones vigente al aceptar (ver src/terms/loan-terms.ts).
+  termsVersion String
+
+  @@unique([kitId, studentId])
 }
 
 model Loan {

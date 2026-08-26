@@ -10,6 +10,34 @@ import { GroupsService } from '../groups/groups.service';
 import { StockService } from '../components/stock.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
 
+/**
+ * Hay discrepancia si, ya verificado el kit, algún ítem quedó sin marcar o trae nota.
+ * Antes de verificar todos los `verified` son false por defecto, así que no cuenta.
+ */
+function hasDiscrepancies(
+  verifiedAt: Date | null,
+  items: { verified: boolean; verificationNote: string | null }[],
+): boolean {
+  if (verifiedAt === null) return false;
+  return items.some((it) => !it.verified || it.verificationNote !== null);
+}
+
+/** Flags resumidos para destacar el kit en los listados del profesor/ayudante. */
+function summaryFlags(
+  verifiedAt: Date | null,
+  items: { verified: boolean; verificationNote: string | null }[],
+  acceptedCount: number,
+  memberCount: number,
+) {
+  return {
+    isVerified: verifiedAt !== null,
+    verifiedAt,
+    hasDiscrepancies: hasDiscrepancies(verifiedAt, items),
+    acceptanceStatus: `${acceptedCount}/${memberCount}`,
+    allAccepted: memberCount > 0 && acceptedCount >= memberCount,
+  };
+}
+
 interface DesiredItem {
   componentId: string;
   quantity: number;
@@ -109,8 +137,9 @@ export class KitsService {
     const kits = await this.prisma.kit.findMany({
       where: { groupId },
       include: {
-        _count: { select: { items: true } },
+        _count: { select: { items: true, acceptances: true } },
         items: { orderBy: { componentName: 'asc' } },
+        group: { select: { _count: { select: { members: true } } } },
       },
       orderBy: { assignedAt: 'desc' },
     });
@@ -130,7 +159,10 @@ export class KitsService {
         quantity: it.quantity,
         returnedQuantity: it.returnedQuantity,
         pending: it.quantity - it.returnedQuantity,
+        verified: it.verified,
+        verificationNote: it.verificationNote,
       })),
+      ...summaryFlags(kit.verifiedAt, kit.items, kit._count.acceptances, kit.group._count.members),
     }));
   }
 
@@ -144,8 +176,11 @@ export class KitsService {
     const kits = await this.prisma.kit.findMany({
       where: { courseId },
       include: {
-        _count: { select: { items: true } },
-        group: { select: { id: true, name: true } },
+        _count: { select: { items: true, acceptances: true } },
+        items: { select: { verified: true, verificationNote: true } },
+        group: {
+          select: { id: true, name: true, _count: { select: { members: true } } },
+        },
       },
       orderBy: { assignedAt: 'desc' },
     });
@@ -154,9 +189,10 @@ export class KitsService {
       id: kit.id,
       code: kit.code,
       status: kit.status,
-      group: kit.group,
+      group: { id: kit.group.id, name: kit.group.name },
       assignedAt: kit.assignedAt,
       itemCount: kit._count.items,
+      ...summaryFlags(kit.verifiedAt, kit.items, kit._count.acceptances, kit.group._count.members),
     }));
   }
 
@@ -335,11 +371,32 @@ export class KitsService {
       include: {
         _count: { select: { items: true } },
         items: { orderBy: { componentName: 'asc' } },
+        verifiedBy: { select: { id: true, name: true } },
+        acceptances: { select: { studentId: true, acceptedAt: true, termsVersion: true } },
+        group: {
+          select: {
+            members: {
+              select: { student: { select: { id: true, name: true } } },
+              orderBy: { student: { name: 'asc' } },
+            },
+          },
+        },
       },
     });
     if (!kit) {
       throw new NotFoundException('Kit no encontrado');
     }
+
+    const acceptanceByStudent = new Map(kit.acceptances.map((a) => [a.studentId, a]));
+    const members = kit.group.members.map((m) => {
+      const acceptance = acceptanceByStudent.get(m.student.id);
+      return {
+        studentId: m.student.id,
+        name: m.student.name,
+        accepted: Boolean(acceptance),
+        acceptedAt: acceptance?.acceptedAt ?? null,
+      };
+    });
 
     return {
       id: kit.id,
@@ -358,7 +415,23 @@ export class KitsService {
         quantity: it.quantity,
         returnedQuantity: it.returnedQuantity,
         pending: it.quantity - it.returnedQuantity,
+        verified: it.verified,
+        verificationNote: it.verificationNote,
       })),
+      verifiedBy: kit.verifiedBy,
+      // Mismos flags resumidos que los listados, para que el shape no diverja.
+      ...summaryFlags(
+        kit.verifiedAt,
+        kit.items,
+        members.filter((m) => m.accepted).length,
+        members.length,
+      ),
+      acceptances: {
+        accepted: members.filter((m) => m.accepted).length,
+        total: members.length,
+        pending: members.filter((m) => !m.accepted).map((m) => m.name),
+        members,
+      },
     };
   }
 

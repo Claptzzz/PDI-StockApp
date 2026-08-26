@@ -12,6 +12,7 @@ import { useKitTemplates } from '@/api/templates';
 import { useComponents } from '@/api/components';
 import { getApiErrorMessage } from '@/lib/errors';
 import type { Kit, KitStatus, Shortage } from '@/lib/apiTypes';
+import { formatDateTime } from '@/lib/format';
 import { useToast } from '@/store/toast';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -24,6 +25,19 @@ import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 const KIT_TONE: Record<KitStatus, BadgeTone> = { ASSIGNED: 'ambar', RETURNED: 'success' };
 const kitLabel: Record<KitStatus, string> = { ASSIGNED: 'Asignado', RETURNED: 'Devuelto' };
+
+/** Estado de la verificación de entrega + alerta de discrepancias. */
+function VerificationBadge({ kit }: { kit: Kit }) {
+  if (!kit.isVerified) {
+    return <Badge tone="gray">Sin verificar</Badge>;
+  }
+  return (
+    <>
+      <Badge tone="success">Verificado</Badge>
+      {kit.hasDiscrepancies && <Badge tone="danger">Con discrepancias</Badge>}
+    </>
+  );
+}
 
 function extractShortages(err: unknown): Shortage[] | null {
   if (axios.isAxiosError(err)) {
@@ -73,16 +87,28 @@ export function KitsSection({ courseId, groupId }: { courseId: string; groupId: 
               <tr>
                 <Th>Código</Th>
                 <Th>Estado</Th>
+                <Th>Verificación</Th>
+                <Th>Condiciones</Th>
                 <Th>Ítems</Th>
                 <Th className="text-right">Acciones</Th>
               </tr>
             </thead>
             <tbody>
               {kits.data.map((kit) => (
-                <tr key={kit.id}>
+                <tr key={kit.id} className={kit.hasDiscrepancies ? 'bg-danger/5' : undefined}>
                   <Td className="font-semibold">{kit.code}</Td>
                   <Td>
                     <Badge tone={KIT_TONE[kit.status]}>{kitLabel[kit.status]}</Badge>
+                  </Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-1">
+                      <VerificationBadge kit={kit} />
+                    </div>
+                  </Td>
+                  <Td>
+                    <Badge tone={kit.allAccepted ? 'success' : 'ambar'}>
+                      {kit.acceptanceStatus}
+                    </Badge>
                   </Td>
                   <Td>{kit.itemCount}</Td>
                   <Td className="text-right">
@@ -377,9 +403,15 @@ function KitDetailModal({
         <ErrorState message={getApiErrorMessage(kit.error)} />
       ) : kit.data ? (
         <div className="flex flex-col gap-3">
-          <div>
+          <div className="flex flex-wrap gap-1">
             <Badge tone={KIT_TONE[kit.data.status]}>{kitLabel[kit.data.status]}</Badge>
+            <VerificationBadge kit={kit.data} />
           </div>
+
+          <VerificationPanel kit={kit.data} />
+          <AcceptancePanel kit={kit.data} />
+
+          <h4 className="mt-1 text-sm font-bold text-text-primary">Devoluciones</h4>
           <Table>
             <thead>
               <tr>
@@ -434,5 +466,104 @@ function KitDetailModal({
         </div>
       ) : null}
     </Modal>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Paneles de verificación y aceptaciones (vista profesor/ayudante)
+// ----------------------------------------------------------------------------
+
+/** Resultado de la verificación de entrega, ítem por ítem, con las notas del alumno. */
+function VerificationPanel({ kit }: { kit: Kit }) {
+  if (!kit.isVerified) {
+    return (
+      <div className="rounded-[var(--radius)] border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">
+        El grupo aún no ha verificado la entrega de este kit.
+      </div>
+    );
+  }
+
+  const issues = kit.items.filter((it) => !it.verified || it.verificationNote);
+
+  return (
+    <div className="rounded-[var(--radius)] border border-border p-3">
+      <p className="text-sm text-text-secondary">
+        Verificado por{' '}
+        <strong className="text-text-primary">{kit.verifiedBy?.name ?? '—'}</strong> el{' '}
+        {formatDateTime(kit.verifiedAt)}.
+      </p>
+
+      {issues.length > 0 && (
+        <p className="mt-2 rounded-[var(--radius)] border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {issues.length} ítem(s) con discrepancia. No se ajustó ninguna cantidad ni el stock: tú
+          decides qué hacer.
+        </p>
+      )}
+
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {kit.items.map((it) => (
+          <li key={it.id} className="flex min-w-0 items-start gap-2 text-sm">
+            <span
+              aria-hidden
+              className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                it.verified ? 'bg-success/15 text-success' : 'bg-danger/15 text-danger'
+              }`}
+            >
+              {it.verified ? '✓' : '✕'}
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="break-words font-semibold text-text-primary">
+                {it.componentName}
+              </span>{' '}
+              <span className="text-text-secondary">×{it.quantity}</span>
+              {!it.verified && (
+                <span className="ml-1 text-xs font-semibold text-danger">no recibido</span>
+              )}
+              {it.verificationNote && (
+                <p className="mt-0.5 break-words rounded bg-gray-50 px-2 py-1 text-xs text-text-primary">
+                  “{it.verificationNote}”
+                </p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Quiénes aceptaron las condiciones, cuándo, y quiénes faltan. */
+function AcceptancePanel({ kit }: { kit: Kit }) {
+  const acceptances = kit.acceptances;
+  if (!acceptances) return null;
+
+  return (
+    <div className="rounded-[var(--radius)] border border-border p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h4 className="text-sm font-bold text-text-primary">Condiciones de préstamo</h4>
+        <Badge tone={acceptances.pending.length === 0 ? 'success' : 'ambar'}>
+          {acceptances.accepted} de {acceptances.total} aceptaron
+        </Badge>
+      </div>
+
+      <ul className="mt-2 flex flex-col gap-1 text-sm">
+        {acceptances.members.map((m) => (
+          <li key={m.studentId} className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="min-w-0 break-words font-semibold text-text-primary">{m.name}</span>
+            {m.accepted ? (
+              <span className="text-xs text-success">Aceptó el {formatDateTime(m.acceptedAt)}</span>
+            ) : (
+              <span className="text-xs font-semibold text-ocre">Pendiente</span>
+            )}
+          </li>
+        ))}
+      </ul>
+
+      {acceptances.pending.length > 0 && (
+        <p className="mt-2 break-words text-xs text-text-secondary">
+          Faltan: <span className="font-semibold text-ocre">{acceptances.pending.join(', ')}</span>
+        </p>
+      )}
+    </div>
   );
 }
