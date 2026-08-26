@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLoans, useCreateLoan, useReturnLoan, useDeleteLoan } from '@/api/loans';
 import { getApiErrorMessage } from '@/lib/errors';
+import { formatDateTime } from '@/lib/format';
 import type { Component, Loan, LoanStatus } from '@/lib/apiTypes';
 import { useToast } from '@/store/toast';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
@@ -11,7 +12,9 @@ import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ReturnModal } from '@/components/ui/ReturnModal';
 import { ReturnTimeline, ReturnNotesFlag } from '@/components/ui/ReturnTimeline';
+import { PhotoModal } from '@/components/ui/PhotoModal';
 import { ComponentCombobox } from '@/components/ui/ComponentCombobox';
+import { TagBadgeList } from '@/components/ui/TagBadge';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 const LOAN_TONE: Record<LoanStatus, BadgeTone> = {
@@ -30,6 +33,8 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
   const [deleting, setDeleting] = useState<Loan | null>(null);
   // Préstamo cuyo modal de devolución está abierto (la nota necesita un textarea).
   const [returning, setReturning] = useState<Loan | null>(null);
+  /** Préstamo cuya foto se está viendo en el visor. */
+  const [photoLoan, setPhotoLoan] = useState<Loan | null>(null);
 
   const doReturn = (quantity: number, note: string) => {
     if (!returning) return;
@@ -75,6 +80,7 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
             loans={loans.data}
             onReturn={setReturning}
             onDelete={setDeleting}
+            onOpenPhoto={setPhotoLoan}
           />
         ) : (
           <EmptyState message="Este grupo aún no tiene préstamos adicionales." />
@@ -99,6 +105,17 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
         />
       )}
 
+      <PhotoModal
+        open={Boolean(photoLoan)}
+        onClose={() => setPhotoLoan(null)}
+        // Se relee de `loans.data`: tras "Recargar" trae la signedUrl fresca.
+        url={loans.data?.find((l) => l.id === photoLoan?.id)?.signedUrl ?? null}
+        title={photoLoan?.componentName ?? ''}
+        subtitle={photoLoan ? `Prestado el ${formatDateTime(photoLoan.loanedAt)}` : undefined}
+        onReload={() => void loans.refetch()}
+        reloading={loans.isFetching}
+      />
+
       <ConfirmDialog
         open={Boolean(deleting)}
         title="Eliminar préstamo"
@@ -115,15 +132,28 @@ export function LoansSection({ courseId, groupId }: { courseId: string; groupId:
   );
 }
 
-/** Miniatura de la foto de evidencia (o marcador si no hay). */
-function LoanPhoto({ loan, size = 'h-10 w-10' }: { loan: Loan; size?: string }) {
+/** Miniatura de la foto de evidencia (o marcador si no hay). Abre el visor en modal. */
+function LoanPhoto({
+  loan,
+  size = 'h-10 w-10',
+  onOpen,
+}: {
+  loan: Loan;
+  size?: string;
+  onOpen: (loan: Loan) => void;
+}) {
   if (!loan.signedUrl) {
     return <span className="text-xs text-text-muted">—</span>;
   }
   return (
-    <a href={loan.signedUrl} target="_blank" rel="noreferrer" className="shrink-0">
+    <button
+      type="button"
+      onClick={() => onOpen(loan)}
+      aria-label={`Ver foto de ${loan.componentName}`}
+      className="shrink-0 rounded transition-opacity hover:opacity-80"
+    >
       <img src={loan.signedUrl} alt="evidencia" className={`${size} rounded object-cover`} />
-    </a>
+    </button>
   );
 }
 
@@ -147,13 +177,14 @@ interface LoanListProps {
   loans: Loan[];
   onReturn: (loan: Loan) => void;
   onDelete: (loan: Loan) => void;
+  onOpenPhoto: (loan: Loan) => void;
 }
 
 /**
  * Tarjetas apiladas en móvil, tabla desde `sm`. La tabla necesita scroll
  * horizontal a 375px y eso arrastraría la timeline fuera de la pantalla.
  */
-function LoanList({ loans, onReturn, onDelete }: LoanListProps) {
+function LoanList({ loans, onReturn, onDelete, onOpenPhoto }: LoanListProps) {
   const actions = (loan: Loan) => (
     <div className="flex flex-wrap items-center justify-end gap-1">
       {loan.pending > 0 && (
@@ -177,7 +208,7 @@ function LoanList({ loans, onReturn, onDelete }: LoanListProps) {
             className="min-w-0 rounded-[var(--radius-card)] border border-border bg-surface-card p-3"
           >
             <div className="flex min-w-0 items-start gap-3">
-              <LoanPhoto loan={loan} size="h-12 w-12" />
+              <LoanPhoto loan={loan} size="h-12 w-12" onOpen={onOpenPhoto} />
               <div className="min-w-0 flex-1">
                 <p className="break-words font-semibold text-text-primary">{loan.componentName}</p>
                 {loan.note && (
@@ -222,7 +253,7 @@ function LoanList({ loans, onReturn, onDelete }: LoanListProps) {
             {loans.flatMap((loan) => [
               <tr key={loan.id}>
                 <Td>
-                  <LoanPhoto loan={loan} />
+                  <LoanPhoto loan={loan} onOpen={onOpenPhoto} />
                 </Td>
                 <Td className="font-semibold">
                   {loan.componentName}
@@ -273,6 +304,8 @@ function CreateLoanModal({
 
   const [componentName, setComponentName] = useState('');
   const [componentId, setComponentId] = useState<string | undefined>(undefined);
+  /** Componente elegido del catálogo (para mostrar código, etiquetas y stock). */
+  const [picked, setPicked] = useState<Component | null>(null);
   const [quantity, setQuantity] = useState('1');
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -322,25 +355,50 @@ function CreateLoanModal({
     >
       <div className="flex flex-col gap-4">
         <ComponentCombobox
-          label="Componente (elige de bodega o escribe libremente)"
-          placeholder="Ej: Arduino UNO o 'Cámara externa'"
+          label="Componente (busca por nombre o código, o escribe libremente)"
+          placeholder="Ej: Arduino UNO, MCU-UNO o 'Cámara externa'"
           value={componentName}
           onChange={(text) => {
             setComponentName(text);
+            // Al editar el texto se rompe el vínculo: vuelve a ser texto libre.
             setComponentId(undefined);
+            setPicked(null);
           }}
           onPick={(c: Component) => {
             setComponentName(c.name);
             setComponentId(c.id);
+            setPicked(c);
           }}
         />
-        {componentId ? (
-          <p className="-mt-2 text-xs text-success">
-            Vinculado a bodega — se validará el stock disponible.
-          </p>
-        ) : (
-          <p className="-mt-2 text-xs text-text-muted">Texto libre — no se valida stock.</p>
-        )}
+
+        {/* Origen del componente: enlazado al catálogo vs texto libre. */}
+        <div className="-mt-2 flex min-w-0 flex-wrap items-center gap-2">
+          {componentId ? (
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-0.5 text-xs font-semibold text-success">
+                ✓ del inventario
+              </span>
+              {picked?.code && (
+                <span className="whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+                  {picked.code}
+                </span>
+              )}
+              {picked && <TagBadgeList tags={picked.tags} />}
+              <span className="text-xs text-text-secondary">
+                Se validará el stock ({picked?.available ?? 0} disp.).
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2.5 py-0.5 text-xs font-semibold text-gray-600">
+                externo
+              </span>
+              <span className="text-xs text-text-secondary">
+                Texto libre — no se valida stock.
+              </span>
+            </>
+          )}
+        </div>
 
         <div className="flex gap-3">
           <Input

@@ -2,8 +2,11 @@ import { useState } from 'react';
 import { useGroups, useGroup } from '@/api/groups';
 import { getApiErrorMessage } from '@/lib/errors';
 import { Button } from '@/components/ui/Button';
+import { SearchBar } from '@/components/ui/SearchBar';
+import { MatchedMembers } from '@/components/ui/MatchedMembers';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
+import { useGroupSearch } from '@/hooks/useGroupSearch';
 import { GroupTabs } from '@/pages/profesor/group/GroupTabs';
 
 /**
@@ -20,6 +23,8 @@ export function AssistantCourseView({
 }) {
   const groups = useGroups(courseId);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  // Mismo hook que usa el profesor en /profesor/cursos/:courseId.
+  const search = useGroupSearch(groups.data);
 
   const banner = (
     <div className="mb-4 rounded-[var(--radius)] border border-terracota/30 bg-terracota/10 px-4 py-2 text-sm font-semibold text-terracota">
@@ -48,28 +53,53 @@ export function AssistantCourseView({
       ) : groups.isError ? (
         <ErrorState message={getApiErrorMessage(groups.error)} />
       ) : groups.data && groups.data.length > 0 ? (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Grupo</Th>
-              <Th>Integrantes</Th>
-              <Th className="text-right">Acción</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.data.map((g) => (
-              <tr key={g.id}>
-                <Td className="font-semibold">{g.name}</Td>
-                <Td>{g.membersCount}</Td>
-                <Td className="text-right">
-                  <Button size="sm" variant="secondary" onClick={() => setSelectedGroupId(g.id)}>
-                    Operar
-                  </Button>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+        <>
+          <SearchBar
+            value={search.query}
+            onValueChange={search.setQuery}
+            placeholder="Buscar equipo por nombre o integrante…"
+            hint={search.hint}
+            aria-label="Buscar equipo"
+          />
+
+          {search.matches.length === 0 ? (
+            <div className="mt-4">
+              <EmptyState message="Ningún equipo coincide con la búsqueda." />
+            </div>
+          ) : (
+            <div className="mt-4">
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Grupo</Th>
+                    <Th>Integrantes</Th>
+                    <Th className="text-right">Acción</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {search.matches.map(({ group: g, matchedMembers }) => (
+                    <tr key={g.id}>
+                      <Td>
+                        <span className="font-semibold">{g.name}</span>
+                        <MatchedMembers members={matchedMembers} />
+                      </Td>
+                      <Td>{g.membersCount}</Td>
+                      <Td className="text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setSelectedGroupId(g.id)}
+                        >
+                          Operar
+                        </Button>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </>
       ) : (
         <EmptyState message="Este curso aún no tiene grupos." />
       )}

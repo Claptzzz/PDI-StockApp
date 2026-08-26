@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { KitStatus, LoanStatus, MyGroupDetail } from '@/lib/apiTypes';
 import { formatPeriod } from '@/lib/format';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Table, Td, Th } from '@/components/ui/Table';
+import { PhotoModal } from '@/components/ui/PhotoModal';
 import { KitVerificationCard } from './KitVerificationCard';
 
 const KIT_TONE: Record<KitStatus, BadgeTone> = { ASSIGNED: 'ambar', RETURNED: 'success' };
@@ -16,8 +18,12 @@ const LOAN_TONE: Record<LoanStatus, BadgeTone> = {
 
 /** Detalle de grupo en SOLO LECTURA para el alumno (vista 4d). */
 export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
+  const queryClient = useQueryClient();
   // Kit que dispara el aviso prominente: se abre su modal de verificación.
   const [autoVerifyKitId, setAutoVerifyKitId] = useState<string | null>(null);
+  /** Id del préstamo cuya foto se está viendo en el visor. */
+  const [photoLoanId, setPhotoLoanId] = useState<string | null>(null);
+  const photoLoan = data.loans.find((l) => l.id === photoLoanId) ?? null;
 
   const kitPending = data.kits.reduce(
     (sum, k) => sum + k.items.reduce((s, it) => s + it.pending, 0),
@@ -167,13 +173,18 @@ export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
                 className="flex items-center gap-4 rounded-[var(--radius-card)] border border-border bg-surface-card p-3"
               >
                 {loan.signedUrl ? (
-                  <a href={loan.signedUrl} target="_blank" rel="noreferrer">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoLoanId(loan.id)}
+                    aria-label={`Ver foto de ${loan.componentName}`}
+                    className="shrink-0 rounded transition-opacity hover:opacity-80"
+                  >
                     <img
                       src={loan.signedUrl}
                       alt="evidencia"
                       className="h-12 w-12 rounded object-cover"
                     />
-                  </a>
+                  </button>
                 ) : (
                   <div className="grid h-12 w-12 place-items-center rounded bg-gray-100 text-xs text-text-muted">
                     s/f
@@ -197,6 +208,16 @@ export function StudentGroupDetail({ data }: { data: MyGroupDetail }) {
           </div>
         )}
       </section>
+
+      <PhotoModal
+        open={Boolean(photoLoan)}
+        onClose={() => setPhotoLoanId(null)}
+        url={photoLoan?.signedUrl ?? null}
+        title={photoLoan?.componentName ?? ''}
+        subtitle={photoLoan?.note ?? undefined}
+        // El detalle del grupo trae las signedUrl: invalidarlo las renueva.
+        onReload={() => void queryClient.invalidateQueries({ queryKey: ['me', 'group'] })}
+      />
     </div>
   );
 }

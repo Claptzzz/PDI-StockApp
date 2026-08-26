@@ -856,6 +856,15 @@ interface ItemRow {
   quantity: string;
 }
 
+const MAX_BULK_ROWS = 50;
+
+/** Normaliza el input de "agregar N filas" al rango 1–50. */
+function clampBulk(raw: string): number {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(n, MAX_BULK_ROWS);
+}
+
 function TemplatesSection() {
   const toast = useToast();
   const templatesQuery = useKitTemplates();
@@ -870,12 +879,16 @@ function TemplatesSection() {
   const [rows, setRows] = useState<ItemRow[]>([{ componentId: '', quantity: '1' }]);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<KitTemplate | null>(null);
+  // Índices de filas señaladas en rojo por la validación (sin componente o duplicadas).
+  const [rowErrors, setRowErrors] = useState<Set<number>>(new Set());
+  const [bulkCount, setBulkCount] = useState('5');
 
   const openCreate = () => {
     setEditing(null);
     setName('');
     setRows([{ componentId: '', quantity: '1' }]);
     setFormError(null);
+    setRowErrors(new Set());
     setFormOpen(true);
   };
 
@@ -884,23 +897,50 @@ function TemplatesSection() {
     setName(t.name);
     setRows(t.items.map((i) => ({ componentId: i.component.id, quantity: String(i.quantity) })));
     setFormError(null);
+    setRowErrors(new Set());
     setFormOpen(true);
+  };
+
+  const fail = (message: string, badRows: number[] = []) => {
+    setRowErrors(new Set(badRows));
+    setFormError(message);
+    // Con 20+ filas el mensaje del pie queda fuera de vista: lleva la vista a la
+    // primera fila marcada. rAF para que el borde rojo ya esté en el DOM.
+    if (badRows.length > 0) {
+      requestAnimationFrame(() => {
+        document
+          .querySelector('[role="dialog"] [aria-invalid="true"]')
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    }
   };
 
   const submit = () => {
     const trimmed = name.trim();
-    if (!trimmed) return setFormError('El nombre es obligatorio.');
-    if (rows.length === 0) return setFormError('Agrega al menos un componente.');
-    if (rows.some((r) => !r.componentId))
-      return setFormError('Selecciona el componente en cada fila.');
+    if (!trimmed) return fail('El nombre es obligatorio.');
+    if (rows.length === 0) return fail('Agrega al menos un componente.');
 
-    const ids = rows.map((r) => r.componentId);
-    if (new Set(ids).size !== ids.length)
-      return setFormError('Hay componentes duplicados; combínalos en una sola fila.');
+    const empty = rows.map((r, i) => (r.componentId ? -1 : i)).filter((i) => i >= 0);
+    if (empty.length > 0)
+      return fail(
+        `Faltan ${empty.length} fila(s) por completar. Elige el componente o usa «Quitar filas vacías».`,
+        empty,
+      );
+
+    // Índices de TODAS las filas que comparten componente, para marcarlas todas.
+    const seen = new Map<string, number[]>();
+    rows.forEach((r, i) => seen.set(r.componentId, [...(seen.get(r.componentId) ?? []), i]));
+    const dupes = [...seen.values()].filter((idx) => idx.length > 1).flat();
+    if (dupes.length > 0)
+      return fail('Hay componentes duplicados; combínalos en una sola fila.', dupes);
 
     const items = rows.map((r) => ({ componentId: r.componentId, quantity: Number(r.quantity) }));
-    if (items.some((i) => !Number.isInteger(i.quantity) || i.quantity < 1))
-      return setFormError('Cada cantidad debe ser un entero ≥ 1.');
+    const badQty = items
+      .map((i, idx) => (Number.isInteger(i.quantity) && i.quantity >= 1 ? -1 : idx))
+      .filter((i) => i >= 0);
+    if (badQty.length > 0) return fail('Cada cantidad debe ser un entero ≥ 1.', badQty);
+
+    setRowErrors(new Set());
 
     const input: TemplateInput = { name: trimmed, items };
     const onError = (err: unknown) => setFormError(getApiErrorMessage(err));
@@ -941,6 +981,37 @@ function TemplatesSection() {
   };
 
   const components = componentsQuery.data ?? [];
+  const emptyRowCount = rows.filter((r) => !r.componentId).length;
+  const bulkN = clampBulk(bulkCount);
+
+  /** Inserta N filas vacías de una vez (plantillas de 20+ componentes). */
+  const addBulkRows = () => {
+    setRows([...rows, ...Array.from({ length: bulkN }, () => ({ componentId: '', quantity: '1' }))]);
+    setFormError(null);
+  };
+
+  /** Descarta las filas sin componente; deja siempre al menos una. */
+  const removeEmptyRows = () => {
+    const kept = rows.filter((r) => r.componentId);
+    setRows(kept.length > 0 ? kept : [{ componentId: '', quantity: '1' }]);
+    setRowErrors(new Set());
+    setFormError(null);
+  };
+
+  const removeRow = (idx: number) => {
+    setRows(rows.filter((_, i) => i !== idx));
+    // Los índices se corren al borrar: recalcular en el próximo submit.
+    setRowErrors(new Set());
+  };
+
+  const clearRowError = (idx: number) => {
+    setRowErrors((prev) => {
+      if (!prev.has(idx)) return prev;
+      const next = new Set(prev);
+      next.delete(idx);
+      return next;
+    });
+  };
 
   return (
     <div>
@@ -1010,45 +1081,88 @@ function TemplatesSection() {
           <Input label="Nombre" value={name} onChange={(e) => setName(e.target.value)} />
 
           <div className="flex flex-col gap-2">
-            <span className="text-sm font-semibold text-text-secondary">Componentes</span>
-            {rows.map((row, idx) => (
-              <div key={idx} className="flex items-end gap-2">
-                <div className="min-w-0 flex-1">
-                  <Select
-                    value={row.componentId}
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-text-secondary">Componentes</span>
+              <span className="text-xs text-text-secondary">
+                {rows.length} fila(s)
+                {emptyRowCount > 0 && ` · ${emptyRowCount} sin completar`}
+              </span>
+            </div>
+
+            {rows.map((row, idx) => {
+              const invalid = rowErrors.has(idx);
+              return (
+                <div key={idx} className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={row.componentId}
+                      // Marca en rojo la fila señalada por la validación.
+                      invalid={invalid}
+                      onChange={(e) => {
+                        const next = [...rows];
+                        next[idx] = { ...next[idx], componentId: e.target.value };
+                        setRows(next);
+                        clearRowError(idx);
+                      }}
+                    >
+                      <option value="">Selecciona…</option>
+                      {components.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code ? `${c.name} (${c.code})` : c.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Input
+                    type="number"
+                    className="w-20 shrink-0"
+                    invalid={invalid}
+                    value={row.quantity}
                     onChange={(e) => {
                       const next = [...rows];
-                      next[idx] = { ...next[idx], componentId: e.target.value };
+                      next[idx] = { ...next[idx], quantity: e.target.value };
                       setRows(next);
+                      clearRowError(idx);
                     }}
+                  />
+                  <Button
+                    variant="ghost"
+                    aria-label={`Quitar fila ${idx + 1}`}
+                    onClick={() => removeRow(idx)}
+                    disabled={rows.length === 1}
                   >
-                    <option value="">Selecciona…</option>
-                    {components.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code ? `${c.name} (${c.code})` : c.name}
-                      </option>
-                    ))}
-                  </Select>
+                    ✕
+                  </Button>
                 </div>
-                <Input
+              );
+            })}
+
+            {/* Alta masiva: útil para plantillas largas (kits de 20+ componentes). */}
+            <div className="mt-1 flex flex-col gap-2 rounded-[var(--radius)] border border-dashed border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <input
                   type="number"
-                  className="w-20 shrink-0"
-                  value={row.quantity}
-                  onChange={(e) => {
-                    const next = [...rows];
-                    next[idx] = { ...next[idx], quantity: e.target.value };
-                    setRows(next);
-                  }}
+                  min={1}
+                  max={MAX_BULK_ROWS}
+                  aria-label="Cantidad de filas a agregar"
+                  value={bulkCount}
+                  onChange={(e) => setBulkCount(e.target.value)}
+                  className="min-h-[44px] w-20 shrink-0 rounded-[var(--radius)] border border-border bg-surface-card px-3 py-2 text-sm text-text-primary outline-none focus:border-primary"
                 />
-                <Button
-                  variant="ghost"
-                  onClick={() => setRows(rows.filter((_, i) => i !== idx))}
-                  disabled={rows.length === 1}
-                >
-                  ✕
+                <Button variant="secondary" onClick={addBulkRows} className="shrink-0">
+                  Agregar {bulkN} fila{bulkN === 1 ? '' : 's'}
                 </Button>
               </div>
-            ))}
+              <Button
+                variant="ghost"
+                onClick={removeEmptyRows}
+                disabled={emptyRowCount === 0}
+                className="shrink-0"
+              >
+                Quitar filas vacías
+              </Button>
+            </div>
+
             <button
               type="button"
               onClick={() => setRows([...rows, { componentId: '', quantity: '1' }])}
