@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '@/store/auth';
-import { useMyContexts } from '@/api/student';
 import { roleLabel, userRoles, type Role } from '@/lib/types';
 import { Toaster } from '@/components/ui/Toaster';
 import ucnLogo from '@/assets/UCN_y_texto.png';
@@ -34,7 +33,7 @@ const SECTION_BY_ROLE: Record<Role, NavSection> = {
   },
   STUDENT: {
     title: 'Estudiante',
-    items: [{ label: 'Mi grupo', to: '/estudiante' }],
+    items: [{ label: 'Mis cursos', to: '/estudiante' }],
   },
 };
 
@@ -44,19 +43,11 @@ const SECTION_ORDER: Role[] = ['ADMIN', 'PROFESSOR', 'STUDENT'];
 export function Layout() {
   const { user, logout } = useAuth();
   const roles = userRoles(user);
-  const contexts = useMyContexts(roles.includes('STUDENT'));
-  const hasAssistant = (contexts.data ?? []).some((c) => c.hatType === 'ASSISTANT');
 
   // Secciones acumuladas por rol, en orden fijo de privilegio.
-  const sections: NavSection[] = SECTION_ORDER.filter((r) => roles.includes(r)).map((role) => {
-    const section = SECTION_BY_ROLE[role];
-    if (role !== 'STUDENT') return section;
-    // El ayudante entra por la misma ruta, pero la etiqueta cambia.
-    return {
-      ...section,
-      items: [{ label: hasAssistant ? 'Mis cursos' : 'Mi grupo', to: '/estudiante' }],
-    };
-  });
+  const sections: NavSection[] = SECTION_ORDER.filter((r) => roles.includes(r)).map(
+    (role) => SECTION_BY_ROLE[role],
+  );
 
   // Con un solo rol no se pintan encabezados: se ve igual que antes.
   const showHeadings = sections.length > 1;
@@ -78,7 +69,10 @@ export function Layout() {
   }, [drawerOpen]);
 
   return (
-    <div className="flex min-h-screen">
+    // En lg+ el shell ocupa exactamente el viewport y NO scrollea: el scroll vive
+    // dentro de <main>, así el sidebar y el header quedan siempre a la vista.
+    // En móvil se conserva el scroll del body (el drawer ya se superpone).
+    <div className="flex min-h-dvh lg:h-dvh lg:overflow-hidden">
       {drawerOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/50 lg:hidden"
@@ -88,12 +82,15 @@ export function Layout() {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy text-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-navy text-white transition-transform duration-200 lg:static lg:z-auto lg:h-full lg:translate-x-0 ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="border-b border-white/10 px-6 py-5 text-lg font-bold">Kits Arduino</div>
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="shrink-0 border-b border-white/10 px-6 py-5 text-lg font-bold">
+          Kits Arduino
+        </div>
+        {/* Scroll propio: con varios roles los enlaces pueden no caber. */}
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
           {sections.map((section, idx) => (
             <div key={section.title} className={idx > 0 ? 'mt-5' : undefined}>
               {showHeadings && (
@@ -132,13 +129,15 @@ export function Layout() {
             </div>
           ))}
         </nav>
-        <div className="border-t border-white/10 px-6 py-4 text-xs text-white/40">
+        <div className="shrink-0 border-t border-white/10 px-6 py-4 text-xs text-white/40">
           UCN · Escuela de Ingeniería
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-border bg-surface-card px-4 py-3 sm:px-6 lg:px-8">
+      <div className="flex min-w-0 flex-1 flex-col lg:h-full lg:overflow-hidden">
+        {/* `shrink-0` lo mantiene visible en desktop (main es quien scrollea);
+            `sticky` hace lo propio en móvil, donde scrollea el body. */}
+        <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface-card px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2 sm:gap-3">
             <button
               type="button"
@@ -173,7 +172,7 @@ export function Layout() {
           />
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="min-h-0 flex-1 p-4 sm:p-6 lg:overflow-y-auto lg:p-8">
           <Outlet />
         </main>
       </div>

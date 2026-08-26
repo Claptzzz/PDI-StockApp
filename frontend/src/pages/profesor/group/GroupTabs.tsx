@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Tabs, type TabDef } from '@/components/ui/Tabs';
 import { MembersSection } from './MembersSection';
 import { KitsSection } from './KitsSection';
 import { LoansSection } from './LoansSection';
@@ -6,7 +7,7 @@ import { ReturnsSummarySection } from './ReturnsSummarySection';
 
 type Tab = 'members' | 'kits' | 'loans' | 'summary';
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: TabDef<Tab>[] = [
   { id: 'members', label: 'Integrantes' },
   { id: 'kits', label: 'Kits' },
   { id: 'loans', label: 'Préstamos' },
@@ -31,22 +32,7 @@ export function GroupTabs({
 
   return (
     <div>
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-              tab === t.id
-                ? 'border-primary text-primary'
-                : 'border-transparent text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       <div className="mt-5">
         {tab === 'members' && (
