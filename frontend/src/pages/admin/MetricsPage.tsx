@@ -1,11 +1,22 @@
 import { useMemo, useState } from 'react';
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { useTerms } from '@/api/courses';
 import { useOverview, useStock, useUsage, usePendingReturns, type Period } from '@/api/metrics';
 import { getApiErrorMessage } from '@/lib/errors';
-import type { StockRow } from '@/lib/apiTypes';
+import type { StockRow, UsageRow } from '@/lib/apiTypes';
 import { Badge } from '@/components/ui/Badge';
 import { TagBadgeList } from '@/components/ui/TagBadge';
+import { Button } from '@/components/ui/Button';
+import { Checkbox } from '@/components/ui/Checkbox';
 import { Select } from '@/components/ui/Select';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { Loading, ErrorState } from '@/components/ui/States';
@@ -21,6 +32,8 @@ function useUcnColors() {
       ambar: read('--ucn-ambar', '#d5a140'),
       danger: read('--color-danger', '#b3261e'),
       success: read('--color-success', '#2e7d32'),
+      border: read('--border', '#dde2ea'),
+      textSecondary: read('--text-secondary', '#586274'),
     };
   }, []);
 }
@@ -55,7 +68,7 @@ export function MetricsPage() {
       </div>
 
       <OverviewCards period={period} />
-      <StockSection />
+      <ReplenishSection />
       <UsageSection period={period} />
       <PendingReturnsSection period={period} />
     </div>
@@ -118,101 +131,324 @@ function StatCard({
   );
 }
 
-// --- b) Bodega / stock (global) ---
+// --- b) Reposición de bodega ---
 
-function StockSection() {
+/** Umbral de "stock bajo" configurable desde la UI. */
+const THRESHOLDS = [5, 10, 20] as const;
+/** Cuántas columnas caben cómodamente en el gráfico. */
+const REPLENISH_TOP_N = 12;
+/** Ancho reservado por columna: bajo esto el eje X se vuelve ilegible. */
+const COLUMN_WIDTH = 64;
+
+/** Abrevia nombres largos para el eje X (el completo va en el tooltip). */
+function shortName(name: string, max = 14): string {
+  return name.length <= max ? name : `${name.slice(0, max - 1)}…`;
+}
+
+function ReplenishSection() {
   const stock = useStock();
   const colors = useUcnColors();
+  const [threshold, setThreshold] = useState<number>(5);
+  const [onlyBelow, setOnlyBelow] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const rows = useMemo(() => {
+    const all = [...(stock.data ?? [])].sort((a, b) => a.available - b.available);
+    return onlyBelow ? all.filter((r) => r.available <= threshold) : all;
+  }, [stock.data, threshold, onlyBelow]);
+
+  /** Los N con menor disponibilidad, ya ordenados ascendente. */
+  const chartData = useMemo(
+    () =>
+      rows.slice(0, REPLENISH_TOP_N).map((r) => ({
+        ...r,
+        shortName: shortName(r.name),
+        committed: r.committedInKits + r.committedInLoans,
+      })),
+    [rows],
+  );
+
+  /** Lista de compra: todo lo que está en o bajo el umbral. */
+  const toBuy = useMemo(
+    () => (stock.data ?? []).filter((r) => r.available <= threshold).sort((a, b) => a.available - b.available),
+    [stock.data, threshold],
+  );
+
+  const barColor = (available: number) =>
+    available <= 0 ? colors.danger : available <= threshold ? colors.ambar : colors.blue;
+
+  const copyList = async () => {
+    const text = toBuy
+      .map((r) => `- ${r.name}${r.code ? ` (${r.code})` : ''}: ${r.available} disponible(s) de ${r.totalStock}`)
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Sin permiso de portapapeles (http, permisos denegados): no se rompe la vista.
+      setCopied(false);
+    }
+  };
 
   return (
     <section className="mt-8">
-      <h2 className="mb-3 text-xl font-semibold text-text-primary">Bodega (stock global)</h2>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold text-text-primary">Componentes por reponer</h2>
+          <p className="mt-1 text-sm text-text-secondary">
+            Los {REPLENISH_TOP_N} con menor disponibilidad, de menor a mayor.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-32">
+            <Select
+              label="Umbral bajo"
+              value={String(threshold)}
+              onChange={(e) => setThreshold(Number(e.target.value))}
+            >
+              {THRESHOLDS.map((t) => (
+                <option key={t} value={t}>
+                  ≤ {t}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Checkbox
+            checked={onlyBelow}
+            onChange={(e) => setOnlyBelow(e.target.checked)}
+            label="Solo bajo el umbral"
+          />
+        </div>
+      </div>
+
       {stock.isLoading ? (
         <Loading />
       ) : stock.isError ? (
         <ErrorState message={getApiErrorMessage(stock.error)} />
-      ) : stock.data && stock.data.length > 0 ? (
+      ) : chartData.length === 0 ? (
+        <p className="rounded-[var(--radius-card)] border border-success/30 bg-success/10 px-4 py-6 text-center text-sm font-semibold text-success">
+          Ningún componente está en o bajo el umbral de {threshold}. ✅
+        </p>
+      ) : (
         <>
-          <div
-            className="rounded-[var(--radius-card)] border border-border bg-surface-card p-4"
-            style={{ height: Math.max(220, stock.data.length * 34) }}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stock.data} layout="vertical" margin={{ left: 20, right: 16 }}>
-                <XAxis type="number" tick={{ fontSize: 12 }} />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={150}
-                  tick={{ fontSize: 12 }}
-                  interval={0}
-                />
-                <Tooltip />
-                <Bar dataKey="committedInKits" stackId="a" fill={colors.navy} name="En kits" />
-                <Bar
-                  dataKey="committedInLoans"
-                  stackId="a"
-                  fill={colors.blue}
-                  name="En préstamos"
-                />
-                <Bar dataKey="available" stackId="a" name="Disponible">
-                  {stock.data.map((s: StockRow) => (
-                    <Cell key={s.id} fill={s.lowStock ? colors.danger : colors.sky} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Scroll horizontal propio: con muchas columnas el eje X necesita ancho. */}
+          <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-surface-card p-4">
+            <div style={{ minWidth: chartData.length * COLUMN_WIDTH, height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 8, right: 8, left: -16, bottom: 48 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={colors.border} vertical={false} />
+                  <XAxis
+                    dataKey="shortName"
+                    tick={{ fontSize: 11, fill: colors.textSecondary }}
+                    interval={0}
+                    angle={-35}
+                    textAnchor="end"
+                    height={56}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12, fill: colors.textSecondary }}
+                    allowDecimals={false}
+                  />
+                  <Tooltip cursor={{ fill: `${colors.sky}22` }} content={<StockTooltip />} />
+                  {/* `minPointSize`: sin esto una disponibilidad de 0 dibuja una barra
+                      de altura cero y el componente MÁS crítico sería el único invisible. */}
+                  <Bar
+                    dataKey="available"
+                    name="Disponible"
+                    radius={[4, 4, 0, 0]}
+                    minPointSize={3}
+                  >
+                    {chartData.map((r) => (
+                      <Cell key={r.id} fill={barColor(r.available)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          <div className="mt-3">
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Componente</Th>
-                  <Th>Etiquetas</Th>
-                  <Th>Total</Th>
-                  <Th>En kits</Th>
-                  <Th>En préstamos</Th>
-                  <Th>Disponible</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock.data.map((s) => (
-                  <tr key={s.id} className={s.lowStock ? 'bg-danger/5' : undefined}>
-                    <Td className="font-semibold">
-                      {s.name}{' '}
-                      {s.code && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs font-normal text-text-secondary">
-                          {s.code}
-                        </span>
-                      )}{' '}
-                      {s.lowStock && <Badge tone="danger">Bajo stock</Badge>}
-                    </Td>
-                    <Td>
-                      {s.tags.length > 0 ? (
-                        <TagBadgeList tags={s.tags} />
-                      ) : (
-                        <span className="text-text-muted">—</span>
-                      )}
-                    </Td>
-                    <Td>{s.totalStock}</Td>
-                    <Td>{s.committedInKits}</Td>
-                    <Td>{s.committedInLoans}</Td>
-                    <Td>
-                      <span className={s.lowStock ? 'font-semibold text-danger' : 'text-success'}>
-                        {s.available}
-                      </span>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <Legend threshold={threshold} colors={colors} />
+
+          <div className="mt-5">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-base font-bold text-text-primary">
+                Lista de reposición{' '}
+                <span className="font-normal text-text-secondary">
+                  ({toBuy.length} con ≤ {threshold} disponibles)
+                </span>
+              </h3>
+              {toBuy.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={() => void copyList()}>
+                  {copied ? '¡Copiado!' : 'Copiar lista'}
+                </Button>
+              )}
+            </div>
+
+            {toBuy.length === 0 ? (
+              <p className="rounded-[var(--radius-card)] border border-border bg-surface-card p-6 text-center text-sm text-text-muted">
+                Nada por reponer con este umbral.
+              </p>
+            ) : (
+              <ReplenishList rows={toBuy} />
+            )}
           </div>
         </>
-      ) : (
-        <p className="text-sm text-text-muted">No hay componentes en bodega.</p>
       )}
     </section>
+  );
+}
+
+function Legend({
+  threshold,
+  colors,
+}: {
+  threshold: number;
+  colors: ReturnType<typeof useUcnColors>;
+}) {
+  const items = [
+    { color: colors.danger, label: 'Sin stock (0)' },
+    { color: colors.ambar, label: `Bajo (≤ ${threshold})` },
+    { color: colors.blue, label: 'Suficiente' },
+  ];
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+      {items.map((i) => (
+        <span key={i.label} className="flex items-center gap-1.5 text-xs text-text-secondary">
+          <span
+            aria-hidden
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: i.color }}
+          />
+          {i.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface TooltipPayload {
+  payload: StockRow & { committed: number };
+}
+
+/** Tooltip del theme: total / en kits / en préstamos / disponible. */
+function StockTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: TooltipPayload[];
+}) {
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  return (
+    <div className="max-w-[16rem] rounded-[var(--radius)] border border-border bg-surface-card p-3 text-xs shadow-lg">
+      <p className="break-words font-bold text-text-primary">
+        {row.name}
+        {row.code && <span className="ml-1 font-mono text-text-secondary">{row.code}</span>}
+      </p>
+      <dl className="mt-1.5 flex flex-col gap-0.5">
+        <TooltipRow label="Total" value={row.totalStock} />
+        <TooltipRow label="En kits" value={row.committedInKits} />
+        <TooltipRow label="En préstamos" value={row.committedInLoans} />
+        <TooltipRow
+          label="Disponible"
+          value={row.available}
+          className={row.available <= 0 ? 'text-danger' : 'text-text-primary'}
+        />
+      </dl>
+    </div>
+  );
+}
+
+function TooltipRow({
+  label,
+  value,
+  className = 'text-text-primary',
+}: {
+  label: string;
+  value: number;
+  className?: string;
+}) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="text-text-secondary">{label}</dt>
+      <dd className={`font-semibold ${className}`}>{value}</dd>
+    </div>
+  );
+}
+
+/** Tarjetas en móvil, tabla desde `sm`: pensada para salir a comprar. */
+function ReplenishList({ rows }: { rows: StockRow[] }) {
+  const availability = (r: StockRow) => (
+    <span className={`font-bold ${r.available <= 0 ? 'text-danger' : 'text-ocre'}`}>
+      {r.available}
+    </span>
+  );
+
+  return (
+    <>
+      <div className="flex flex-col gap-2 sm:hidden">
+        {rows.map((r) => (
+          <div
+            key={r.id}
+            className="min-w-0 rounded-[var(--radius-card)] border border-border bg-surface-card p-3"
+          >
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="break-words font-semibold text-text-primary">{r.name}</p>
+                {r.code && (
+                  <p className="font-mono text-xs text-text-secondary">{r.code}</p>
+                )}
+              </div>
+              <span className="shrink-0 text-sm">{availability(r)} disp.</span>
+            </div>
+            <TagBadgeList tags={r.tags} className="mt-1.5" />
+            <p className="mt-1.5 text-xs text-text-secondary">
+              Total {r.totalStock} · comprometido {r.committedInKits + r.committedInLoans}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden sm:block">
+        <Table>
+          <thead>
+            <tr>
+              <Th>Componente</Th>
+              <Th>Etiquetas</Th>
+              <Th>Total</Th>
+              <Th>Comprometido</Th>
+              <Th>Disponible</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id} className={r.available <= 0 ? 'bg-danger/5' : undefined}>
+                <Td>
+                  <span className="font-semibold">{r.name}</span>
+                  {r.code && (
+                    <span className="ml-2 inline-block whitespace-nowrap rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+                      {r.code}
+                    </span>
+                  )}
+                </Td>
+                <Td>
+                  {r.tags.length > 0 ? (
+                    <TagBadgeList tags={r.tags} />
+                  ) : (
+                    <span className="text-text-muted">—</span>
+                  )}
+                </Td>
+                <Td>{r.totalStock}</Td>
+                <Td>{r.committedInKits + r.committedInLoans}</Td>
+                <Td>{availability(r)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
+    </>
   );
 }
 
@@ -230,29 +466,36 @@ function UsageSection({ period }: { period: Period }) {
       ) : usage.isError ? (
         <ErrorState message={getApiErrorMessage(usage.error)} />
       ) : usage.data && usage.data.length > 0 ? (
-        <div
-          className="rounded-[var(--radius-card)] border border-border bg-surface-card p-4"
-          style={{ height: Math.max(220, usage.data.length * 34) }}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={usage.data} layout="vertical" margin={{ left: 20, right: 16 }}>
-              <XAxis type="number" tick={{ fontSize: 12 }} allowDecimals={false} />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={150}
-                tick={{ fontSize: 12 }}
-                interval={0}
-              />
-              <Tooltip />
-              <Bar
-                dataKey="totalUsed"
-                fill={colors.ambar}
-                name="Unidades usadas"
-                radius={[0, 4, 4, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="overflow-x-auto rounded-[var(--radius-card)] border border-border bg-surface-card p-4">
+          <div style={{ minWidth: usage.data.length * COLUMN_WIDTH, height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={usage.data.map((u) => ({ ...u, shortName: shortName(u.name) }))}
+                margin={{ top: 8, right: 8, left: -16, bottom: 48 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke={colors.border} vertical={false} />
+                <XAxis
+                  dataKey="shortName"
+                  tick={{ fontSize: 11, fill: colors.textSecondary }}
+                  interval={0}
+                  angle={-35}
+                  textAnchor="end"
+                  height={56}
+                />
+                <YAxis
+                  tick={{ fontSize: 12, fill: colors.textSecondary }}
+                  allowDecimals={false}
+                />
+                <Tooltip cursor={{ fill: `${colors.sky}22` }} content={<UsageTooltip />} />
+                <Bar
+                  dataKey="totalUsed"
+                  fill={colors.ambar}
+                  name="Unidades usadas"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       ) : (
         <p className="text-sm text-text-muted">Sin uso registrado en este periodo.</p>
@@ -317,5 +560,31 @@ function PendingReturnsSection({ period }: { period: Period }) {
         </div>
       )}
     </section>
+  );
+}
+
+interface UsageTooltipPayload {
+  payload: UsageRow;
+}
+
+/** Tooltip de uso: total y desglose entre kits y préstamos. */
+function UsageTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: UsageTooltipPayload[];
+}) {
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  return (
+    <div className="max-w-[16rem] rounded-[var(--radius)] border border-border bg-surface-card p-3 text-xs shadow-lg">
+      <p className="break-words font-bold text-text-primary">{row.name}</p>
+      <dl className="mt-1.5 flex flex-col gap-0.5">
+        <TooltipRow label="En kits" value={row.inKits} />
+        <TooltipRow label="En préstamos" value={row.inLoans} />
+        <TooltipRow label="Total usado" value={row.totalUsed} />
+      </dl>
+    </div>
   );
 }

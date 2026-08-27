@@ -9,7 +9,6 @@ import {
   type AssignKitInput,
 } from '@/api/kits';
 import { useKitTemplates } from '@/api/templates';
-import { useComponents } from '@/api/components';
 import { getApiErrorMessage } from '@/lib/errors';
 import type { Kit, KitItem, KitStatus, Shortage } from '@/lib/apiTypes';
 import { formatDateTime } from '@/lib/format';
@@ -21,6 +20,7 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ComponentCombobox } from '@/components/ui/ComponentCombobox';
 import { ReturnModal } from '@/components/ui/ReturnModal';
 import { ReturnTimeline, ReturnNotesFlag } from '@/components/ui/ReturnTimeline';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
@@ -164,8 +164,12 @@ export function KitsSection({ courseId, groupId }: { courseId: string; groupId: 
 
 interface ItemRow {
   componentId: string;
+  /** Nombre del componente elegido; es lo que muestra el combobox. */
+  componentName: string;
   quantity: string;
 }
+
+const EMPTY_ROW: ItemRow = { componentId: '', componentName: '', quantity: '1' };
 
 function AssignKitModal({
   courseId,
@@ -178,13 +182,12 @@ function AssignKitModal({
 }) {
   const toast = useToast();
   const templates = useKitTemplates();
-  const components = useComponents('');
   const assignKit = useAssignKit(courseId, groupId);
 
   const [mode, setMode] = useState<'template' | 'custom'>('template');
   const [code, setCode] = useState('');
   const [templateId, setTemplateId] = useState('');
-  const [rows, setRows] = useState<ItemRow[]>([{ componentId: '', quantity: '1' }]);
+  const [rows, setRows] = useState<ItemRow[]>([EMPTY_ROW]);
   const [error, setError] = useState<string | null>(null);
   const [shortages, setShortages] = useState<Shortage[] | null>(null);
 
@@ -289,22 +292,22 @@ function AssignKitModal({
             <span className="text-sm font-semibold text-text-secondary">Componentes</span>
             {rows.map((row, idx) => (
               <div key={idx} className="flex items-end gap-2">
-                <div className="flex-1">
-                  <Select
-                    value={row.componentId}
-                    onChange={(e) => {
+                <div className="min-w-0 flex-1">
+                  <ComponentCombobox
+                    value={row.componentName}
+                    placeholder="Buscar componente…"
+                    // El kit se arma con stock real: no hay texto libre.
+                    allowFreeText={false}
+                    excludeIds={rows
+                      .filter((_, i) => i !== idx)
+                      .map((r) => r.componentId)
+                      .filter(Boolean)}
+                    onPick={(c) => {
                       const next = [...rows];
-                      next[idx] = { ...next[idx], componentId: e.target.value };
+                      next[idx] = { ...next[idx], componentId: c.id, componentName: c.name };
                       setRows(next);
                     }}
-                  >
-                    <option value="">Selecciona…</option>
-                    {(components.data ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} ({c.available} disp.)
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 </div>
                 <Input
                   type="number"
@@ -327,7 +330,7 @@ function AssignKitModal({
             ))}
             <button
               type="button"
-              onClick={() => setRows([...rows, { componentId: '', quantity: '1' }])}
+              onClick={() => setRows([...rows, { ...EMPTY_ROW }])}
               className="self-start text-sm font-semibold text-primary hover:underline"
             >
               + Agregar componente
