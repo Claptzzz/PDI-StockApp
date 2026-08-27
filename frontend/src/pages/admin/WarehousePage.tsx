@@ -22,13 +22,13 @@ import { DEFAULT_TAG_COLOR, normalizeHex, tagStyles } from '@/lib/tagColor';
 import { useToast } from '@/store/toast';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TagBadgeList } from '@/components/ui/TagBadge';
 import { TagChips } from '@/components/ui/TagChips';
 import { TagMultiSelect } from '@/components/ui/TagMultiSelect';
+import { ComponentCombobox } from '@/components/ui/ComponentCombobox';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 type Tab = 'components' | 'templates' | 'tags';
@@ -853,8 +853,12 @@ function TagsSection() {
 
 interface ItemRow {
   componentId: string;
+  /** Nombre del componente elegido; es lo que muestra el combobox. */
+  componentName: string;
   quantity: string;
 }
+
+const EMPTY_ROW: ItemRow = { componentId: '', componentName: '', quantity: '1' };
 
 const MAX_BULK_ROWS = 50;
 
@@ -868,7 +872,6 @@ function clampBulk(raw: string): number {
 function TemplatesSection() {
   const toast = useToast();
   const templatesQuery = useKitTemplates();
-  const componentsQuery = useComponents('');
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
   const deleteTemplate = useDeleteTemplate();
@@ -876,7 +879,7 @@ function TemplatesSection() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<KitTemplate | null>(null);
   const [name, setName] = useState('');
-  const [rows, setRows] = useState<ItemRow[]>([{ componentId: '', quantity: '1' }]);
+  const [rows, setRows] = useState<ItemRow[]>([EMPTY_ROW]);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<KitTemplate | null>(null);
   // Índices de filas señaladas en rojo por la validación (sin componente o duplicadas).
@@ -886,7 +889,7 @@ function TemplatesSection() {
   const openCreate = () => {
     setEditing(null);
     setName('');
-    setRows([{ componentId: '', quantity: '1' }]);
+    setRows([EMPTY_ROW]);
     setFormError(null);
     setRowErrors(new Set());
     setFormOpen(true);
@@ -895,7 +898,13 @@ function TemplatesSection() {
   const openEdit = (t: KitTemplate) => {
     setEditing(t);
     setName(t.name);
-    setRows(t.items.map((i) => ({ componentId: i.component.id, quantity: String(i.quantity) })));
+    setRows(
+      t.items.map((i) => ({
+        componentId: i.component.id,
+        componentName: i.component.name,
+        quantity: String(i.quantity),
+      })),
+    );
     setFormError(null);
     setRowErrors(new Set());
     setFormOpen(true);
@@ -980,20 +989,19 @@ function TemplatesSection() {
     });
   };
 
-  const components = componentsQuery.data ?? [];
   const emptyRowCount = rows.filter((r) => !r.componentId).length;
   const bulkN = clampBulk(bulkCount);
 
   /** Inserta N filas vacías de una vez (plantillas de 20+ componentes). */
   const addBulkRows = () => {
-    setRows([...rows, ...Array.from({ length: bulkN }, () => ({ componentId: '', quantity: '1' }))]);
+    setRows([...rows, ...Array.from({ length: bulkN }, () => ({ ...EMPTY_ROW }))]);
     setFormError(null);
   };
 
   /** Descarta las filas sin componente; deja siempre al menos una. */
   const removeEmptyRows = () => {
     const kept = rows.filter((r) => r.componentId);
-    setRows(kept.length > 0 ? kept : [{ componentId: '', quantity: '1' }]);
+    setRows(kept.length > 0 ? kept : [{ ...EMPTY_ROW }]);
     setRowErrors(new Set());
     setFormError(null);
   };
@@ -1094,24 +1102,24 @@ function TemplatesSection() {
               return (
                 <div key={idx} className="flex items-end gap-2">
                   <div className="min-w-0 flex-1">
-                    <Select
-                      value={row.componentId}
+                    <ComponentCombobox
+                      value={row.componentName}
+                      placeholder="Buscar componente…"
+                      // Una plantilla solo puede referenciar el catálogo.
+                      allowFreeText={false}
                       // Marca en rojo la fila señalada por la validación.
                       invalid={invalid}
-                      onChange={(e) => {
+                      excludeIds={rows
+                        .filter((_, i) => i !== idx)
+                        .map((r) => r.componentId)
+                        .filter(Boolean)}
+                      onPick={(c) => {
                         const next = [...rows];
-                        next[idx] = { ...next[idx], componentId: e.target.value };
+                        next[idx] = { ...next[idx], componentId: c.id, componentName: c.name };
                         setRows(next);
                         clearRowError(idx);
                       }}
-                    >
-                      <option value="">Selecciona…</option>
-                      {components.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.code ? `${c.name} (${c.code})` : c.name}
-                        </option>
-                      ))}
-                    </Select>
+                    />
                   </div>
                   <Input
                     type="number"
@@ -1165,7 +1173,7 @@ function TemplatesSection() {
 
             <button
               type="button"
-              onClick={() => setRows([...rows, { componentId: '', quantity: '1' }])}
+              onClick={() => setRows([...rows, { ...EMPTY_ROW }])}
               className="self-start text-sm font-semibold text-primary hover:underline"
             >
               + Agregar componente

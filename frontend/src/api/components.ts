@@ -14,6 +14,10 @@ export interface ComponentFilters {
   search?: string;
   /** Etiquetas seleccionadas; se envían como `tagIds=a,b` (OR entre ellas). */
   tagIds?: string[];
+  /** Corta a los primeros N (por nombre asc). Lo usa el desplegable del selector. */
+  limit?: number;
+  /** Permite no consultar hasta que el desplegable se abre. */
+  enabled?: boolean;
 }
 
 export function useComponents(filters: ComponentFilters | string = {}) {
@@ -21,13 +25,16 @@ export function useComponents(filters: ComponentFilters | string = {}) {
   const normalized: ComponentFilters = typeof filters === 'string' ? { search: filters } : filters;
   const search = normalized.search?.trim() ?? '';
   const tagIds = normalized.tagIds ?? [];
+  const limit = normalized.limit;
 
   return useQuery({
-    queryKey: ['components', search, tagIds],
+    queryKey: ['components', search, tagIds, limit ?? null],
+    enabled: normalized.enabled ?? true,
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (search) params.search = search;
       if (tagIds.length > 0) params.tagIds = tagIds.join(',');
+      if (limit) params.limit = String(limit);
       return (await api.get<Component[]>('/components', { params })).data;
     },
   });

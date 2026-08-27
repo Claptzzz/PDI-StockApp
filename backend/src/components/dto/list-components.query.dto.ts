@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsArray, IsOptional, IsString } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsArray, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
  * Normaliza `?tagId=a` y `?tagIds=a,b` (y repeticiones del mismo query param)
@@ -38,4 +38,16 @@ export class ListComponentsQueryDto {
   @IsArray()
   @IsString({ each: true })
   tagIds?: string[];
+
+  /**
+   * Corta el resultado a los primeros N (por nombre asc). Lo usa el desplegable
+   * del selector de componentes, que abre mostrando el catálogo sin búsqueda y no
+   * necesita traerlo entero.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
 }

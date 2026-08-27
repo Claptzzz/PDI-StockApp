@@ -7,9 +7,10 @@ export interface TagInput {
   color?: string | null;
 }
 
-export function useTags() {
+export function useTags(enabled = true) {
   return useQuery({
     queryKey: ['tags'],
+    enabled,
     queryFn: async () => (await api.get<Tag[]>('/tags')).data,
   });
 }

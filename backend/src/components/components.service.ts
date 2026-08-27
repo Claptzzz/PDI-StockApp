@@ -60,6 +60,7 @@ export class ComponentsService {
       where,
       orderBy: { name: 'asc' },
       select: COMPONENT_SELECT,
+      ...(query.limit ? { take: query.limit } : {}),
     });
 
     const commitments = await this.stock.getCommitments(components.map((c) => c.id));
