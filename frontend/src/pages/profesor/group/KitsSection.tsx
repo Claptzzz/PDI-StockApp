@@ -6,11 +6,12 @@ import {
   useAssignKit,
   useDeleteKit,
   useReturnKitItem,
+  useResolveDiscrepancy,
   type AssignKitInput,
 } from '@/api/kits';
 import { useKitTemplates } from '@/api/templates';
 import { getApiErrorMessage } from '@/lib/errors';
-import type { Kit, KitItem, KitStatus, Shortage } from '@/lib/apiTypes';
+import type { DiscrepancyAction, Kit, KitItem, KitStatus, Shortage } from '@/lib/apiTypes';
 import { formatDateTime } from '@/lib/format';
 import { useToast } from '@/store/toast';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
@@ -23,6 +24,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ComponentCombobox } from '@/components/ui/ComponentCombobox';
 import { ReturnModal } from '@/components/ui/ReturnModal';
 import { ReturnTimeline, ReturnNotesFlag } from '@/components/ui/ReturnTimeline';
+import { DiscrepancyResolutionModal } from '@/components/ui/DiscrepancyResolutionModal';
+import { ACTION_LABEL } from '@/lib/discrepancy';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 const KIT_TONE: Record<KitStatus, BadgeTone> = { ASSIGNED: 'ambar', RETURNED: 'success' };
@@ -371,8 +374,12 @@ function KitDetailModal({
   const toast = useToast();
   const kit = useKit(courseId, groupId, kitId);
   const returnItem = useReturnKitItem(courseId, groupId, kitId);
+  const resolveDiscrepancy = useResolveDiscrepancy(courseId, groupId, kitId);
   // Ítem cuyo modal de devolución está abierto (la nota necesita un textarea).
   const [returning, setReturning] = useState<KitItem | null>(null);
+  /** Ítem cuya discrepancia se está resolviendo. */
+  const [resolving, setResolving] = useState<KitItem | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   const doReturn = (quantity: number, note: string) => {
     if (!returning) return;
@@ -384,6 +391,22 @@ function KitDetailModal({
           setReturning(null);
         },
         onError: (err) => toast.error(getApiErrorMessage(err)),
+      },
+    );
+  };
+
+  const doResolve = (action: DiscrepancyAction, quantity: number, note: string) => {
+    if (!resolving) return;
+    resolveDiscrepancy.mutate(
+      { kitItemId: resolving.id, action, quantity, note },
+      {
+        onSuccess: () => {
+          toast.success('Discrepancia resuelta.');
+          setResolving(null);
+          setResolveError(null);
+        },
+        // Los 409 (kit sin verificar) y 400 (stock insuficiente) se muestran en el modal.
+        onError: (err) => setResolveError(getApiErrorMessage(err)),
       },
     );
   };
@@ -410,7 +433,7 @@ function KitDetailModal({
             <VerificationBadge kit={kit.data} />
           </div>
 
-          <VerificationPanel kit={kit.data} />
+          <VerificationPanel kit={kit.data} onResolve={setResolving} />
           <AcceptancePanel kit={kit.data} />
 
           <h4 className="mt-1 text-sm font-bold text-text-primary">Devoluciones</h4>
@@ -461,6 +484,20 @@ function KitDetailModal({
           onClose={() => setReturning(null)}
         />
       )}
+
+      {resolving && (
+        <DiscrepancyResolutionModal
+          // Se relee del kit para que el modal refleje la última cantidad.
+          item={kit.data?.items.find((i) => i.id === resolving.id) ?? resolving}
+          loading={resolveDiscrepancy.isPending}
+          error={resolveError}
+          onConfirm={doResolve}
+          onClose={() => {
+            setResolving(null);
+            setResolveError(null);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -470,7 +507,13 @@ function KitDetailModal({
 // ----------------------------------------------------------------------------
 
 /** Resultado de la verificación de entrega, ítem por ítem, con las notas del alumno. */
-function VerificationPanel({ kit }: { kit: Kit }) {
+function VerificationPanel({
+  kit,
+  onResolve,
+}: {
+  kit: Kit;
+  onResolve: (item: KitItem) => void;
+}) {
   if (!kit.isVerified) {
     return (
       <div className="rounded-[var(--radius)] border border-border bg-gray-50 px-3 py-2 text-sm text-text-secondary">
@@ -480,6 +523,7 @@ function VerificationPanel({ kit }: { kit: Kit }) {
   }
 
   const issues = kit.items.filter((it) => !it.verified || it.verificationNote);
+  const pending = issues.filter((it) => !it.isResolved);
 
   return (
     <div className="rounded-[var(--radius)] border border-border p-3">
@@ -489,16 +533,20 @@ function VerificationPanel({ kit }: { kit: Kit }) {
         {formatDateTime(kit.verifiedAt)}.
       </p>
 
-      {issues.length > 0 && (
+      {pending.length > 0 ? (
         <p className="mt-2 rounded-[var(--radius)] border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {issues.length} ítem(s) con discrepancia. No se ajustó ninguna cantidad ni el stock: tú
-          decides qué hacer.
+          {pending.length} ítem(s) con discrepancia sin resolver. Nada se ajusta solo: elige qué
+          hacer con cada uno.
         </p>
-      )}
+      ) : issues.length > 0 ? (
+        <p className="mt-2 rounded-[var(--radius)] border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          Las {issues.length} discrepancia(s) reportadas ya fueron resueltas.
+        </p>
+      ) : null}
 
       <ul className="mt-2 flex flex-col gap-1.5">
         {kit.items.map((it) => (
-          <li key={it.id} className="flex min-w-0 items-start gap-2 text-sm">
+          <li key={it.id} className="flex min-w-0 flex-wrap items-start gap-2 text-sm">
             <span
               aria-hidden
               className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
@@ -520,7 +568,14 @@ function VerificationPanel({ kit }: { kit: Kit }) {
                   “{it.verificationNote}”
                 </p>
               )}
+              <ResolutionHistory item={it} />
             </div>
+
+            {(!it.verified || it.verificationNote) && !it.isResolved && (
+              <Button size="sm" className="shrink-0" onClick={() => onResolve(it)}>
+                Resolver
+              </Button>
+            )}
           </li>
         ))}
       </ul>
@@ -561,5 +616,30 @@ function AcceptancePanel({ kit }: { kit: Kit }) {
         </p>
       )}
     </div>
+  );
+}
+
+/** Qué se decidió sobre la discrepancia: acción, cantidad, quién, cuándo y la nota. */
+function ResolutionHistory({ item }: { item: KitItem }) {
+  if (item.resolutions.length === 0) return null;
+
+  return (
+    <ul className="mt-1.5 flex min-w-0 flex-col gap-1.5">
+      {item.resolutions.map((r) => (
+        <li
+          key={r.id}
+          className="min-w-0 rounded-[var(--radius)] border border-success/30 bg-success/5 px-2 py-1.5"
+        >
+          <p className="flex flex-wrap items-baseline gap-x-1.5 text-xs">
+            <span className="font-bold text-success">{ACTION_LABEL[r.action]}</span>
+            <span className="text-text-secondary">
+              · {r.quantity} unidad{r.quantity === 1 ? '' : 'es'} · {r.resolvedBy.name} ·{' '}
+              {formatDateTime(r.createdAt)}
+            </span>
+          </p>
+          <p className="mt-0.5 break-words text-xs text-text-primary">{r.note}</p>
+        </li>
+      ))}
+    </ul>
   );
 }

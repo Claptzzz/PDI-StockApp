@@ -2,6 +2,31 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { KitStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Ítem de kit tal como lo necesitan los contadores de discrepancias. */
+interface DiscrepancyItem {
+  verified: boolean;
+  verificationNote: string | null;
+  _count: { resolutions: number };
+}
+
+const isDiscrepancy = (it: DiscrepancyItem): boolean =>
+  !it.verified || it.verificationNote !== null;
+
+/** Discrepancia que todavía nadie ha resuelto. */
+const isPendingDiscrepancy = (it: DiscrepancyItem): boolean =>
+  isDiscrepancy(it) && it._count.resolutions === 0;
+
+/** Cuenta ítems que cumplen `match`, ignorando los kits aún sin verificar. */
+function countDiscrepancies(
+  kits: { verifiedAt: Date | null; items: DiscrepancyItem[] }[],
+  match: (it: DiscrepancyItem) => boolean,
+): number {
+  return kits.reduce(
+    (sum, kit) => (kit.verifiedAt === null ? sum : sum + kit.items.filter(match).length),
+    0,
+  );
+}
+
 /** Un integrante que aún no firma las condiciones. */
 export interface PendingMember {
   id: string;
@@ -62,6 +87,8 @@ export class CourseOverviewService {
               returnedQuantity: true,
               verified: true,
               verificationNote: true,
+              // Una discrepancia con resolución registrada ya no está pendiente.
+              _count: { select: { resolutions: true } },
             },
           },
           acceptances: { select: { studentId: true } },
@@ -135,9 +162,9 @@ export class CourseOverviewService {
       const isVerified = kit?.verifiedAt != null;
       // Antes de verificar, todos los ítems están en `verified=false` por defecto:
       // eso no es una discrepancia, solo que aún no se ha revisado.
+      // Refleja solo las PENDIENTES: una resuelta ya no pide acción del profesor.
       const hasDiscrepancies =
-        isVerified &&
-        (kit?.items.some((it) => !it.verified || it.verificationNote !== null) ?? false);
+        isVerified && (kit?.items.some((it) => isPendingDiscrepancy(it)) ?? false);
 
       const returns = {
         allReturned: pendingKitUnits === 0 && pendingLoanUnits === 0,
@@ -197,13 +224,13 @@ export class CourseOverviewService {
       groupsWithPending: rows.filter((r) => !r.returns.allReturned).length,
       itemsPendingReturn: rows.reduce((s, r) => s + r.returns.pendingKitUnits, 0),
       loansPendingReturn: rows.reduce((s, r) => s + r.returns.pendingLoanUnits, 0),
-      // Ítems de kit no verificados o con nota, sobre kits YA verificados.
-      discrepancies: kits.reduce(
-        (sum, kit) =>
-          kit.verifiedAt === null
-            ? sum
-            : sum + kit.items.filter((it) => !it.verified || it.verificationNote !== null).length,
-        0,
+      // Ítems de kit no verificados o con nota, sobre kits YA verificados,
+      // que todavía nadie ha resuelto.
+      discrepancies: countDiscrepancies(kits, isPendingDiscrepancy),
+      // Los ya atendidos, para que el resumen refleje el trabajo hecho.
+      discrepanciesResolved: countDiscrepancies(
+        kits,
+        (it) => isDiscrepancy(it) && it._count.resolutions > 0,
       ),
     };
 

@@ -140,6 +140,18 @@ export interface ReturnEvent {
   createdAt: string;
 }
 
+/** Acciones con las que el profesor/ayudante cierra una discrepancia. */
+export type DiscrepancyAction = 'ACKNOWLEDGED' | 'REPLACED' | 'DEDUCTED' | 'WRITE_OFF';
+
+export interface DiscrepancyResolution {
+  id: string;
+  action: DiscrepancyAction;
+  quantity: number;
+  note: string;
+  resolvedBy: { id: string; name: string };
+  createdAt: string;
+}
+
 export interface KitItem {
   id: string;
   componentId: string | null;
@@ -155,6 +167,10 @@ export interface KitItem {
   returnEvents: ReturnEvent[];
   /** Algún evento del historial trae observación. */
   hasReturnNotes: boolean;
+  /** Qué se decidió sobre la discrepancia (puede haber más de una decisión). */
+  resolutions: DiscrepancyResolution[];
+  /** La discrepancia ya fue atendida (basta una resolución registrada). */
+  isResolved: boolean;
 }
 
 /** Estado de aceptación de condiciones de un integrante del grupo. */
@@ -358,6 +374,8 @@ export interface MyKitItem {
   quantity: number;
   verified: boolean;
   verificationNote: string | null;
+  /** Qué decidió el profesor sobre lo que el grupo reportó. */
+  resolutions: DiscrepancyResolution[];
 }
 
 /** Kit visto por el alumno para verificarlo y aceptar condiciones. */
@@ -397,8 +415,10 @@ export interface CourseOverviewTotals {
   groupsWithPending: number;
   itemsPendingReturn: number;
   loansPendingReturn: number;
-  /** Ítems de kit no verificados o con nota, sobre kits ya verificados. */
+  /** Discrepancias PENDIENTES (sin ninguna resolución registrada). */
   discrepancies: number;
+  /** Discrepancias ya atendidas por el profesor/ayudante. */
+  discrepanciesResolved: number;
 }
 
 export interface CourseOverviewGroup {
