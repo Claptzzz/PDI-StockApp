@@ -9,7 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { deriveLoanStatus } from '../loans/loans.service';
-import { LOAN_TERMS } from '../terms/loan-terms';
+import { TermsService } from '../terms/terms.service';
 import { RESOLUTION_SELECT } from '../kits/discrepancies.service';
 import { VerifyKitDto } from './dto/verify-kit.dto';
 import { AcceptTermsDto } from './dto/accept-terms.dto';
@@ -19,6 +19,7 @@ export class StudentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly terms: TermsService,
   ) {}
 
   /** Grupos del alumno (vía GroupMember), con curso y conteo de miembros. */
@@ -261,6 +262,8 @@ export class StudentService {
       code: kit.code,
       status: kit.status,
       assignedAt: kit.assignedAt,
+      /// El modal de condiciones pide el texto vigente PARA ESTE CURSO.
+      courseId: kit.courseId,
       groupId: kit.group.id,
       groupName: kit.group.name,
       items: kit.items.map((it) => ({
@@ -279,14 +282,15 @@ export class StudentService {
       /** Fecha en que aceptó el usuario ACTUAL (null si aún no acepta). */
       myAcceptedAt: acceptanceByStudent.get(studentId)?.acceptedAt ?? null,
       allAccepted: members.length > 0 && members.every((m) => m.accepted),
-      termsVersion: LOAN_TERMS.version,
     };
   }
 
   /** Detalle del kit para la pantalla de verificación del alumno. */
   async getMyKit(studentId: string, kitId: string) {
     const kit = await this.loadMyKit(studentId, kitId);
-    return this.serializeMyKit(kit, studentId);
+    // La etiqueta vigente depende del documento asignado al curso del kit.
+    const terms = await this.terms.resolveForCourse(kit.courseId);
+    return { ...this.serializeMyKit(kit, studentId), termsVersion: terms.version };
   }
 
   /**
@@ -358,13 +362,14 @@ export class StudentService {
     if (kit.verifiedAt === null) {
       throw new ConflictException('Primero deben verificar el kit');
     }
-    if (dto.termsVersion !== LOAN_TERMS.version) {
+    const terms = await this.terms.resolveForCourse(kit.courseId);
+    if (dto.termsVersion !== terms.version) {
       throw new ConflictException('Las condiciones cambiaron, recarga la página');
     }
 
     try {
       await this.prisma.kitAcceptance.create({
-        data: { kitId, studentId, termsVersion: LOAN_TERMS.version },
+        data: { kitId, studentId, termsVersion: terms.version },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

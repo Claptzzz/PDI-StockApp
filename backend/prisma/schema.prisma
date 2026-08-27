@@ -43,6 +43,7 @@ model User {
   returnsReceived  ReturnEvent[]     @relation("ReturnReceivedBy")
 
   discrepanciesResolved DiscrepancyResolution[] @relation("DiscrepancyResolvedBy")
+  termsCreated          TermsVersion[]          @relation("TermsCreatedBy")
 }
 
 model Course {
@@ -51,6 +52,10 @@ model Course {
   year      Int
   semester  Int
   createdAt DateTime @default(now())
+
+  /// Documento de condiciones propio; si es null se usa el documento por defecto.
+  termsDocumentId String?
+  termsDocument   TermsDocument? @relation(fields: [termsDocumentId], references: [id])
 
   groups     Group[]
   professors CourseProfessor[]
@@ -265,4 +270,38 @@ model ReturnEvent {
 
   @@index([kitItemId, createdAt])
   @@index([loanId, createdAt])
+}
+
+/// Documento de condiciones de prestamo. Agrupa versiones inmutables.
+/// Exactamente uno tiene isDefault=true: es el que se usa cuando un curso no
+/// tiene documento propio.
+model TermsDocument {
+  id        String   @id @default(cuid())
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  versions TermsVersion[]
+  courses  Course[]
+}
+
+/// Version de un documento. Una vez publicada (publishedAt != null) es INMUTABLE:
+/// las firmas ya registradas deben poder apuntar siempre al texto que se leyo.
+model TermsVersion {
+  id          String        @id @default(cuid())
+  document    TermsDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId  String
+  /// Etiqueta legible elegida por el admin: "1.0", "2026-02", etc.
+  version     String
+  title       String
+  /// Cuerpo en markdown simple.
+  body        String
+  /// null = borrador; con fecha = publicada e inmutable.
+  publishedAt DateTime?
+  createdAt   DateTime      @default(now())
+  createdById String
+  createdBy   User          @relation("TermsCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([documentId, version])
+  @@index([documentId, publishedAt])
 }

@@ -6,6 +6,7 @@ import Login from '@/pages/Login';
 import { AccountsPage } from '@/pages/admin/AccountsPage';
 import { CoursesPage } from '@/pages/admin/CoursesPage';
 import { WarehousePage } from '@/pages/admin/WarehousePage';
+import { DocumentsPage } from '@/pages/admin/DocumentsPage';
 import { MetricsPage } from '@/pages/admin/MetricsPage';
 import { ProfesorCoursesPage } from '@/pages/profesor/CoursesPage';
 import { CourseDetailPage } from '@/pages/profesor/CourseDetailPage';
@@ -38,6 +39,7 @@ function App() {
             <Route path="cuentas" element={<AccountsPage />} />
             <Route path="cursos" element={<CoursesPage />} />
             <Route path="bodega" element={<WarehousePage />} />
+            <Route path="documentos" element={<DocumentsPage />} />
           </Route>
 
           <Route path="/profesor" element={<RoleRoute roles={['PROFESSOR']} />}>
