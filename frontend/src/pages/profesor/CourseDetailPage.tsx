@@ -15,12 +15,21 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { SearchBar } from '@/components/ui/SearchBar';
+import { Tabs, type TabDef } from '@/components/ui/Tabs';
+import { CourseOverviewSection } from '@/components/course/CourseOverviewSection';
 import { MatchedMembers } from '@/components/ui/MatchedMembers';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 import { useGroupSearch } from '@/hooks/useGroupSearch';
 import { AssistantsSection } from './AssistantsSection';
+
+type CourseTab = 'groups' | 'overview';
+
+const COURSE_TABS: TabDef<CourseTab>[] = [
+  { id: 'groups', label: 'Grupos' },
+  { id: 'overview', label: 'Resumen del curso' },
+];
 
 export function CourseDetailPage() {
   const { courseId = '' } = useParams();
@@ -39,6 +48,7 @@ export function CourseDetailPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Group | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [tab, setTab] = useState<CourseTab>('groups');
 
   const openCreate = () => {
     setEditing(null);
@@ -105,20 +115,35 @@ export function CourseDetailPage() {
           <h1 className="text-3xl font-bold text-text-primary">{course.data?.name ?? 'Curso'}</h1>
           {course.data && (
             <p className="mt-1 text-text-secondary">
-              {course.data.year}/{course.data.semester === 1 ? '01' : '02'} · Grupos
+              {/* Ya no se nombra la sección: ahora hay pestañas. */}
+              {course.data.year}/{course.data.semester === 1 ? '01' : '02'}
             </p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            Importar CSV
-          </Button>
-          <Button onClick={openCreate}>Nuevo grupo</Button>
-        </div>
+        {tab === 'groups' && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              Importar CSV
+            </Button>
+            <Button onClick={openCreate}>Nuevo grupo</Button>
+          </div>
+        )}
       </div>
 
-      <div className="mt-6">
-        {groupsQuery.isLoading ? (
+      <Tabs tabs={COURSE_TABS} active={tab} onChange={setTab} className="mt-6" />
+
+      {tab === 'overview' && (
+        <div className="mt-6">
+          <CourseOverviewSection
+            courseId={courseId}
+            groupHref={(groupId) => `/profesor/cursos/${courseId}/grupos/${groupId}`}
+          />
+        </div>
+      )}
+
+      {tab === 'groups' && (
+        <div className="mt-6">
+          {groupsQuery.isLoading ? (
           <Loading />
         ) : groupsQuery.isError ? (
           <ErrorState message={getApiErrorMessage(groupsQuery.error)} />
@@ -176,12 +201,13 @@ export function CourseDetailPage() {
               </div>
             )}
           </>
-        ) : (
-          <EmptyState message="Aún no hay grupos. Crea uno o importa un CSV." />
-        )}
-      </div>
+          ) : (
+            <EmptyState message="Aún no hay grupos. Crea uno o importa un CSV." />
+          )}
+        </div>
+      )}
 
-      <AssistantsSection courseId={courseId} />
+      {tab === 'groups' && <AssistantsSection courseId={courseId} />}
 
       <Modal
         open={formOpen}

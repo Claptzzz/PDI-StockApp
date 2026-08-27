@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMyGroups, useMyGroup } from '@/api/student';
 import { useMyContext } from '@/hooks/useMyContext';
@@ -5,6 +6,8 @@ import { getApiErrorMessage } from '@/lib/errors';
 import { formatPeriod } from '@/lib/format';
 import type { MyContext } from '@/lib/apiTypes';
 import { Badge } from '@/components/ui/Badge';
+import { Tabs, type TabDef } from '@/components/ui/Tabs';
+import { CourseOverviewSection } from '@/components/course/CourseOverviewSection';
 import { Loading, ErrorState } from '@/components/ui/States';
 import { RedirectWithToast } from '@/components/ui/RedirectWithToast';
 import { AssistantCourseView } from './AssistantCourseView';
@@ -51,9 +54,40 @@ export function StudentCourseDetailPage() {
 
       <div className="mt-6">
         {isAssistant ? (
-          <AssistantCourseView courseId={courseId} />
+          <AssistantCourseTabs courseId={courseId} />
         ) : (
           <StudentCourseGroup context={context} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type AssistantTab = 'groups' | 'overview';
+
+const ASSISTANT_TABS: TabDef<AssistantTab>[] = [
+  { id: 'groups', label: 'Grupos' },
+  { id: 'overview', label: 'Resumen del curso' },
+];
+
+/**
+ * Ayudante: mismos dos niveles que el profesor. El resumen es idéntico (es
+ * información, no gestión) y el endpoint ya lo permite vía CourseOperateGuard.
+ */
+function AssistantCourseTabs({ courseId }: { courseId: string }) {
+  const [tab, setTab] = useState<AssistantTab>('groups');
+
+  return (
+    <div>
+      <Tabs tabs={ASSISTANT_TABS} active={tab} onChange={setTab} />
+      <div className="mt-5">
+        {tab === 'groups' ? (
+          <AssistantCourseView courseId={courseId} />
+        ) : (
+          <CourseOverviewSection
+            courseId={courseId}
+            groupHref={(groupId) => `/estudiante/cursos/${courseId}/grupos/${groupId}`}
+          />
         )}
       </div>
     </div>
