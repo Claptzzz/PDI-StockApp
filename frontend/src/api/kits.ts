@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Kit } from '@/lib/apiTypes';
+import type { DiscrepancyAction, Kit } from '@/lib/apiTypes';
 
 const kitsKey = (courseId: string, groupId: string) => [
   'courses',
@@ -73,6 +73,38 @@ export function useReturnKitItem(courseId: string, groupId: string, kitId: strin
       qc.invalidateQueries({
         queryKey: ['courses', courseId, 'groups', groupId, 'returns-summary'],
       });
+    },
+  });
+}
+
+export interface ResolveDiscrepancyInput {
+  kitItemId: string;
+  action: DiscrepancyAction;
+  quantity: number;
+  /** Obligatoria: justifica la decisión y queda en el historial. */
+  note: string;
+}
+
+/** Resuelve una discrepancia reportada por el alumno sobre un ítem del kit. */
+export function useResolveDiscrepancy(courseId: string, groupId: string, kitId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ kitItemId, ...body }: ResolveDiscrepancyInput) =>
+      (
+        await api.post<Kit>(
+          `/courses/${courseId}/groups/${groupId}/kits/${kitId}/items/${kitItemId}/resolve`,
+          body,
+        )
+      ).data,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: kitsKey(courseId, groupId) });
+      void qc.invalidateQueries({
+        queryKey: ['courses', courseId, 'groups', groupId, 'kit', kitId],
+      });
+      // El resumen del curso y el stock cambian con DEDUCTED / WRITE_OFF.
+      void qc.invalidateQueries({ queryKey: ['courses', courseId, 'overview'] });
+      void qc.invalidateQueries({ queryKey: ['components'] });
+      void qc.invalidateQueries({ queryKey: ['metrics', 'stock'] });
     },
   });
 }

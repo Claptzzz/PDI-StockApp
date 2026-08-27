@@ -78,10 +78,6 @@ npm install
 npm run dev
 ```
 
-> **Importante:** las variables `VITE_*` se **inyectan en tiempo de build**. Si
-> cambias `VITE_API_URL` o `VITE_GOOGLE_CLIENT_ID`, hay que reconstruir el
-> frontend (`npm run build`); no se leen en runtime.
-
 ## Puesta en marcha con docker-compose (imagen de producción)
 
 Levanta Postgres + el backend construido desde su `Dockerfile`. Sirve para probar
@@ -130,8 +126,6 @@ docker compose down -v
 | ----------------------- | :-------: | ------------------------------------------------------------------ |
 | `VITE_API_URL`          |    Sí     | URL base del backend. **Se inyecta en build.**                     |
 | `VITE_GOOGLE_CLIENT_ID` |    Sí     | Client ID de Google (mismo que el backend). **Se inyecta en build.** |
-
-> No pongas valores reales en `.env.example`; son solo plantillas.
 
 ## CI/CD
 
@@ -208,4 +202,3 @@ cabeceras para los proveedores habituales:
 > **Login de Google:** el popup de Google Identity Services requiere la cabecera
 > `Cross-Origin-Opener-Policy: same-origin-allow-popups` (y `COEP: unsafe-none`).
 > Los tres configs anteriores ya la incluyen. Sin ella, el popup de login falla.
-> Recuerda además registrar el dominio del frontend en la consola de Google OAuth.

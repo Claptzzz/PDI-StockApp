@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { deriveLoanStatus } from '../loans/loans.service';
 import { LOAN_TERMS } from '../terms/loan-terms';
+import { RESOLUTION_SELECT } from '../kits/discrepancies.service';
 import { VerifyKitDto } from './dto/verify-kit.dto';
 import { AcceptTermsDto } from './dto/accept-terms.dto';
 
@@ -212,7 +213,11 @@ export class StudentService {
     const kit = await this.prisma.kit.findUnique({
       where: { id: kitId },
       include: {
-        items: { orderBy: { componentName: 'asc' } },
+        items: {
+          orderBy: { componentName: 'asc' },
+          // El alumno ve qué se decidió sobre lo que él reportó (cierra el ciclo).
+          include: { resolutions: { orderBy: { createdAt: 'asc' }, select: RESOLUTION_SELECT } },
+        },
         verifiedBy: { select: { id: true, name: true } },
         acceptances: { select: { studentId: true, acceptedAt: true, termsVersion: true } },
         group: {
@@ -264,6 +269,7 @@ export class StudentService {
         quantity: it.quantity,
         verified: it.verified,
         verificationNote: it.verificationNote,
+        resolutions: it.resolutions,
       })),
       verifiedAt: kit.verifiedAt,
       verifiedBy: kit.verifiedBy,

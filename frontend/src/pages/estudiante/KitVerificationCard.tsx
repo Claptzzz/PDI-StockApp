@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useMyKit, useVerifyKit, useAcceptTerms, type VerifyKitItemInput } from '@/api/student';
 import { getApiErrorMessage } from '@/lib/errors';
 import { formatDateTime } from '@/lib/format';
-import type { MyKitDetail } from '@/lib/apiTypes';
+import type { MyKitDetail, MyKitItem } from '@/lib/apiTypes';
+import { ACTION_FOR_STUDENT } from '@/lib/discrepancy';
 import { useToast } from '@/store/toast';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -84,6 +85,7 @@ export function KitVerificationCard({
 
 function VerifiedSummary({ data }: { data: MyKitDetail }) {
   const issues = data.items.filter((it) => !it.verified || it.verificationNote);
+  const pending = issues.filter((it) => it.resolutions.length === 0);
 
   return (
     <div className="mt-3">
@@ -92,12 +94,16 @@ function VerifiedSummary({ data }: { data: MyKitDetail }) {
         el {formatDateTime(data.verifiedAt)}.
       </p>
 
-      {issues.length > 0 && (
+      {pending.length > 0 ? (
         <div className="mt-2 rounded-[var(--radius)] border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-ocre">
-          Se registraron {issues.length} observación(es). Tu profesor o ayudante las revisará; las
-          cantidades del kit no se modificaron.
+          Se registraron {pending.length} observación(es) pendientes. Tu profesor o ayudante las
+          revisará; por ahora las cantidades del kit no cambian.
         </div>
-      )}
+      ) : issues.length > 0 ? (
+        <div className="mt-2 rounded-[var(--radius)] border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+          Tus {issues.length} observación(es) ya fueron resueltas. Revisa abajo qué se decidió.
+        </div>
+      ) : null}
 
       <ul className="mt-3 flex flex-col gap-2">
         {data.items.map((it) => (
@@ -126,11 +132,40 @@ function VerifiedSummary({ data }: { data: MyKitDetail }) {
                   “{it.verificationNote}”
                 </p>
               )}
+              <StudentResolutions item={it} />
             </div>
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * Cierra el ciclo para el alumno: qué decidió el profesor sobre lo que reportó,
+ * dicho en términos de lo que le afecta (si deberá devolverlo o no).
+ */
+function StudentResolutions({ item }: { item: MyKitItem }) {
+  if (item.resolutions.length === 0) return null;
+
+  return (
+    <ul className="mt-1.5 flex min-w-0 flex-col gap-1.5">
+      {item.resolutions.map((r) => (
+        <li
+          key={r.id}
+          className="min-w-0 rounded-[var(--radius)] border border-success/30 bg-success/5 px-2 py-1.5"
+        >
+          <p className="break-words text-xs">
+            <span className="font-bold text-success">Resuelto:</span>{' '}
+            <span className="text-text-primary">{ACTION_FOR_STUDENT[r.action](r.quantity)}</span>
+          </p>
+          <p className="mt-0.5 break-words text-xs text-text-secondary">
+            {r.resolvedBy.name} · {formatDateTime(r.createdAt)}
+          </p>
+          <p className="mt-0.5 break-words text-xs text-text-primary">“{r.note}”</p>
+        </li>
+      ))}
+    </ul>
   );
 }
 

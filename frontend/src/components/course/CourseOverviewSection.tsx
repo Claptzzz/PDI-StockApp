@@ -172,6 +172,11 @@ function TotalsGrid({ totals }: { totals: CourseOverviewTotals }) {
         label="Discrepancias"
         value={totals.discrepancies}
         tone={totals.discrepancies === 0 ? 'success' : 'danger'}
+        hint={
+          totals.discrepanciesResolved > 0
+            ? `${totals.discrepanciesResolved} resuelta(s)`
+            : undefined
+        }
       />
     </div>
   );
@@ -181,10 +186,13 @@ function StatCard({
   label,
   value,
   tone,
+  hint,
 }: {
   label: string;
   value: number | string;
   tone?: 'success' | 'warning' | 'danger';
+  /** Línea secundaria (p. ej. cuántas discrepancias ya se resolvieron). */
+  hint?: string;
 }) {
   const toneClass =
     tone === 'success'
@@ -200,6 +208,7 @@ function StatCard({
       <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-text-secondary">
         {label}
       </div>
+      {hint && <div className="mt-0.5 text-xs text-success">{hint}</div>}
     </div>
   );
 }
@@ -216,7 +225,7 @@ function KitBadge({ kit }: { kit: CourseOverviewGroup['kit'] }) {
       <Badge tone={kit.isVerified ? 'success' : 'ambar'}>
         {kit.isVerified ? 'Verificado' : 'Sin verificar'}
       </Badge>
-      {kit.hasDiscrepancies && <Badge tone="danger">⚑ Discrepancias</Badge>}
+      {kit.hasDiscrepancies && <Badge tone="danger">⚑ Discrepancias pendientes</Badge>}
     </div>
   );
 }

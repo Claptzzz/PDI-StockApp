@@ -13,24 +13,34 @@ import {
   RETURN_EVENT_SELECT,
   hasReturnNotes,
 } from '../returns/return-events.service';
+import { DiscrepanciesService, RESOLUTION_SELECT } from './discrepancies.service';
 import { AssignKitDto } from './dto/assign-kit.dto';
+import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
+
+/** Ítem tal como lo necesitan los flags de discrepancia. */
+type DiscrepancyItem = {
+  verified: boolean;
+  verificationNote: string | null;
+  /** Nº de resoluciones registradas; 0 si aún nadie la atendió. */
+  _count?: { resolutions: number };
+};
 
 /**
- * Hay discrepancia si, ya verificado el kit, algún ítem quedó sin marcar o trae nota.
+ * Hay discrepancia PENDIENTE si, ya verificado el kit, algún ítem quedó sin marcar
+ * o trae nota Y todavía no tiene ninguna resolución registrada.
  * Antes de verificar todos los `verified` son false por defecto, así que no cuenta.
  */
-function hasDiscrepancies(
-  verifiedAt: Date | null,
-  items: { verified: boolean; verificationNote: string | null }[],
-): boolean {
+function hasDiscrepancies(verifiedAt: Date | null, items: DiscrepancyItem[]): boolean {
   if (verifiedAt === null) return false;
-  return items.some((it) => !it.verified || it.verificationNote !== null);
+  return items.some(
+    (it) => (!it.verified || it.verificationNote !== null) && (it._count?.resolutions ?? 0) === 0,
+  );
 }
 
 /** Flags resumidos para destacar el kit en los listados del profesor/ayudante. */
 function summaryFlags(
   verifiedAt: Date | null,
-  items: { verified: boolean; verificationNote: string | null }[],
+  items: DiscrepancyItem[],
   acceptedCount: number,
   memberCount: number,
 ) {
@@ -55,6 +65,7 @@ export class KitsService {
     private readonly groupsService: GroupsService,
     private readonly stock: StockService,
     private readonly returnEvents: ReturnEventsService,
+    private readonly discrepancies: DiscrepanciesService,
   ) {}
 
   async assign(courseId: string, groupId: string, dto: AssignKitDto) {
@@ -144,7 +155,10 @@ export class KitsService {
       where: { groupId },
       include: {
         _count: { select: { items: true, acceptances: true } },
-        items: { orderBy: { componentName: 'asc' } },
+        items: {
+          orderBy: { componentName: 'asc' },
+          include: { _count: { select: { resolutions: true } } },
+        },
         group: { select: { _count: { select: { members: true } } } },
       },
       orderBy: { assignedAt: 'desc' },
@@ -183,7 +197,13 @@ export class KitsService {
       where: { courseId },
       include: {
         _count: { select: { items: true, acceptances: true } },
-        items: { select: { verified: true, verificationNote: true } },
+        items: {
+          select: {
+            verified: true,
+            verificationNote: true,
+            _count: { select: { resolutions: true } },
+          },
+        },
         group: {
           select: { id: true, name: true, _count: { select: { members: true } } },
         },
@@ -283,6 +303,25 @@ export class KitsService {
       }
     });
 
+    return this.getKitDetail(kitId);
+  }
+
+  /**
+   * Resuelve una discrepancia de un ítem. Valida la cadena curso→grupo→kit antes de
+   * delegar el efecto (que vive en DiscrepanciesService, con su transacción).
+   */
+  async resolveDiscrepancy(
+    courseId: string,
+    groupId: string,
+    kitId: string,
+    kitItemId: string,
+    dto: ResolveDiscrepancyDto,
+    resolvedById: string,
+  ) {
+    await this.groupsService.ensureGroupInCourse(courseId, groupId);
+    await this.assertKitInGroup(kitId, groupId);
+
+    await this.discrepancies.resolve(kitId, kitItemId, dto, resolvedById);
     return this.getKitDetail(kitId);
   }
 
@@ -397,7 +436,10 @@ export class KitsService {
         _count: { select: { items: true } },
         items: {
           orderBy: { componentName: 'asc' },
-          include: { returnEvents: { orderBy: { createdAt: 'asc' }, select: RETURN_EVENT_SELECT } },
+          include: {
+            returnEvents: { orderBy: { createdAt: 'asc' }, select: RETURN_EVENT_SELECT },
+            resolutions: { orderBy: { createdAt: 'asc' }, select: RESOLUTION_SELECT },
+          },
         },
         verifiedBy: { select: { id: true, name: true } },
         acceptances: { select: { studentId: true, acceptedAt: true, termsVersion: true } },
@@ -447,9 +489,13 @@ export class KitsService {
         verificationNote: it.verificationNote,
         returnEvents: it.returnEvents,
         hasReturnNotes: hasReturnNotes(it.returnEvents),
+        resolutions: it.resolutions,
+        // Criterio simple y documentado: basta UNA resolución (ver discrepancy.constants).
+        isResolved: it.resolutions.length > 0,
       })),
       verifiedBy: kit.verifiedBy,
       // Mismos flags resumidos que los listados, para que el shape no diverja.
+      // El detalle trae las resoluciones completas; se adaptan al shape con `_count`.
       ...summaryFlags(
         kit.verifiedAt,
         kit.items,

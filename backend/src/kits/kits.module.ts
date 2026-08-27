@@ -9,10 +9,11 @@ import {
   GroupReturnsController,
 } from './kits.controller';
 import { KitsService } from './kits.service';
+import { DiscrepanciesService } from './discrepancies.service';
 
 @Module({
   imports: [CoursesModule, GroupsModule, ComponentsModule, ReturnsModule],
   controllers: [GroupKitsController, CourseKitsController, GroupReturnsController],
-  providers: [KitsService],
+  providers: [KitsService, DiscrepanciesService],
 })
 export class KitsModule {}

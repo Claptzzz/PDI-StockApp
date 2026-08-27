@@ -41,6 +41,8 @@ model User {
   kitAcceptances   KitAcceptance[]   @relation("KitAcceptance")
   kitsVerified     Kit[]             @relation("KitVerifiedBy")
   returnsReceived  ReturnEvent[]     @relation("ReturnReceivedBy")
+
+  discrepanciesResolved DiscrepancyResolution[] @relation("DiscrepancyResolvedBy")
 }
 
 model Course {
@@ -191,6 +193,7 @@ model KitItem {
   verificationNote String?
 
   returnEvents ReturnEvent[]
+  resolutions  DiscrepancyResolution[]
 }
 
 /// Aceptacion INDIVIDUAL de las condiciones de prestamo: una fila por integrante.
@@ -224,6 +227,25 @@ model Loan {
   returnedAt       DateTime?
 
   returnEvents ReturnEvent[]
+}
+
+/// Que decidio el profesor/ayudante sobre una discrepancia reportada por el alumno.
+/// `action` es texto (no enum) para poder ampliar el catalogo sin migrar el enum:
+/// ACKNOWLEDGED | REPLACED | DEDUCTED | WRITE_OFF.
+model DiscrepancyResolution {
+  id           String   @id @default(cuid())
+  kitItem      KitItem  @relation(fields: [kitItemId], references: [id], onDelete: Cascade)
+  kitItemId    String
+  action       String
+  /// Unidades afectadas por esta resolucion (>= 1).
+  quantity     Int
+  /// Justificacion de la decision; obligatoria.
+  note         String
+  resolvedBy   User     @relation("DiscrepancyResolvedBy", fields: [resolvedById], references: [id])
+  resolvedById String
+  createdAt    DateTime @default(now())
+
+  @@index([kitItemId, createdAt])
 }
 
 /// Un evento por cada devolucion registrada (pueden ser parciales y en varios momentos).
