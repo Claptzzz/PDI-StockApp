@@ -25,6 +25,7 @@ const SECTION_BY_ROLE: Record<Role, NavSection> = {
       { label: 'Cuentas', to: '/admin/cuentas' },
       { label: 'Cursos', to: '/admin/cursos' },
       { label: 'Bodega', to: '/admin/bodega' },
+      { label: 'Documentos', to: '/admin/documentos' },
     ],
   },
   PROFESSOR: {

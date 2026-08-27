@@ -420,6 +420,7 @@ function AcceptanceBlock({ data }: { data: MyKitDetail }) {
       <LoanTermsModal
         open={termsOpen}
         onClose={() => setTermsOpen(false)}
+        courseId={data.courseId}
         onRead={() => setHasRead(true)}
       />
     </section>

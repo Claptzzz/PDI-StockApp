@@ -9,6 +9,7 @@ import {
   useRemoveProfessor,
   type CourseInput,
 } from '@/api/courses';
+import { useTermsDocuments, useSetCourseTerms } from '@/api/terms';
 import { getApiErrorMessage } from '@/lib/errors';
 import type { Course, CourseProfessor } from '@/lib/apiTypes';
 import { useToast } from '@/store/toast';
@@ -128,6 +129,7 @@ export function CoursesPage() {
                 <Th>Curso</Th>
                 <Th>Periodo</Th>
                 <Th>Grupos</Th>
+                <Th>Condiciones</Th>
                 <Th className="text-right">Acciones</Th>
               </tr>
             </thead>
@@ -142,6 +144,9 @@ export function CoursesPage() {
                     {course.year}/{course.semester === 1 ? '01' : '02'}
                   </Td>
                   <Td>{course.groupsCount}</Td>
+                  <Td>
+                    <CourseTermsSelect course={course} />
+                  </Td>
                   <Td className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="secondary" onClick={() => setSelected(course)}>
@@ -341,6 +346,52 @@ function ProfessorsPanel({ course, onClose }: { course: Course; onClose: () => v
         onConfirm={confirmRemove}
         onCancel={() => setRemoving(null)}
       />
+    </div>
+  );
+}
+
+/**
+ * Documento de condiciones del curso. "Usar el predeterminado" (valor vacío) envía
+ * `null`, que hace que el curso caiga al documento global.
+ */
+function CourseTermsSelect({ course }: { course: Course }) {
+  const toast = useToast();
+  const documents = useTermsDocuments();
+  const setCourseTerms = useSetCourseTerms();
+
+  const change = (value: string) => {
+    setCourseTerms.mutate(
+      { courseId: course.id, termsDocumentId: value || null },
+      {
+        onSuccess: () =>
+          toast.success(
+            value ? 'Documento de condiciones asignado.' : 'El curso usará el predeterminado.',
+          ),
+        onError: (err) => toast.error(getApiErrorMessage(err)),
+      },
+    );
+  };
+
+  const defaultDoc = (documents.data ?? []).find((d) => d.isDefault);
+
+  return (
+    <div className="min-w-0">
+      <Select
+        aria-label={`Documento de condiciones de ${course.name}`}
+        className="min-w-[11rem] text-xs"
+        value={course.termsDocumentId ?? ''}
+        disabled={documents.isLoading || setCourseTerms.isPending}
+        onChange={(e) => change(e.target.value)}
+      >
+        <option value="">
+          Usar el predeterminado{defaultDoc ? ` (${defaultDoc.name})` : ''}
+        </option>
+        {(documents.data ?? []).map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </Select>
     </div>
   );
 }

@@ -18,6 +18,9 @@ export interface Course {
   semester: number;
   createdAt: string;
   groupsCount: number;
+  /** Documento de condiciones propio; null = usa el por defecto. */
+  termsDocumentId?: string | null;
+  termsDocumentName?: string | null;
 }
 
 export interface Term {
@@ -384,6 +387,8 @@ export interface MyKitDetail {
   code: string;
   status: KitStatus;
   assignedAt: string;
+  /** Curso del kit: determina qué documento de condiciones rige. */
+  courseId: string;
   groupId: string;
   groupName: string;
   items: MyKitItem[];
@@ -452,4 +457,40 @@ export interface CourseOverview {
   course: { id: string; name: string; year: number; semester: number };
   totals: CourseOverviewTotals;
   groups: CourseOverviewGroup[];
+}
+
+// --- Documentos de condiciones (Fase 11b) ---
+
+export interface TermsDocumentSummary {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  createdAt: string;
+  versionCount: number;
+  /** Cursos que lo tienen asignado explícitamente. */
+  coursesUsing: number;
+  currentVersion: { version: string; title: string; publishedAt: string | null } | null;
+}
+
+export interface TermsVersionRow {
+  id: string;
+  version: string;
+  title: string;
+  body: string;
+  publishedAt: string | null;
+  createdAt: string;
+  createdBy: { id: string; name: string };
+  isDraft: boolean;
+  /** Firmas registradas con esta etiqueta de versión. */
+  signatureCount: number;
+}
+
+/** Texto vigente que ve el alumno al firmar. */
+export interface ResolvedTerms {
+  documentId: string;
+  documentName: string;
+  version: string;
+  title: string;
+  body: string;
+  publishedAt: string;
 }

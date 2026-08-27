@@ -223,7 +223,11 @@ export class CoursesService {
 
     const courses = await this.prisma.course.findMany({
       where,
-      include: { _count: { select: { groups: true } } },
+      include: {
+        _count: { select: { groups: true } },
+        // Documento de condiciones asignado (null = usa el por defecto).
+        termsDocument: { select: { id: true, name: true } },
+      },
       orderBy: [{ year: 'desc' }, { semester: 'desc' }, { name: 'asc' }],
     });
 
@@ -234,6 +238,8 @@ export class CoursesService {
       semester: course.semester,
       createdAt: course.createdAt,
       groupsCount: course._count.groups,
+      termsDocumentId: course.termsDocumentId,
+      termsDocumentName: course.termsDocument?.name ?? null,
     }));
   }
 
