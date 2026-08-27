@@ -18,7 +18,11 @@ interface TabsProps<T extends string> {
  */
 export function Tabs<T extends string>({ tabs, active, onChange, className = '' }: TabsProps<T>) {
   return (
-    <div className={`-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0 ${className}`}>
+    // `overflow-y-hidden` explícito: sin él, `overflow-x-auto` computa `overflow-y: auto`
+    // y aparece un scrollbar vertical espurio con flechas inertes (ver `.no-scrollbar`).
+    <div
+      className={`no-scrollbar -mx-4 overflow-x-auto overflow-y-hidden px-4 sm:mx-0 sm:px-0 ${className}`}
+    >
       <div role="tablist" className="flex w-max min-w-full gap-1 border-b border-border">
         {tabs.map((t) => (
           <button
