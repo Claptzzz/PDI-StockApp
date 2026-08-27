@@ -381,3 +381,55 @@ export interface MyKitDetail {
   /** Versión vigente del texto; se reenvía al aceptar. */
   termsVersion: string;
 }
+
+// --- Resumen agregado del curso (Fase 10c) ---
+
+export interface CourseOverviewTotals {
+  groups: number;
+  students: number;
+  kitsAssigned: number;
+  kitsVerified: number;
+  kitsPendingVerification: number;
+  acceptancesSigned: number;
+  acceptancesTotal: number;
+  acceptancesPending: number;
+  groupsAllReturned: number;
+  groupsWithPending: number;
+  itemsPendingReturn: number;
+  loansPendingReturn: number;
+  /** Ítems de kit no verificados o con nota, sobre kits ya verificados. */
+  discrepancies: number;
+}
+
+export interface CourseOverviewGroup {
+  groupId: string;
+  groupName: string;
+  memberCount: number;
+  kit: {
+    id: string;
+    code: string;
+    status: KitStatus;
+    isVerified: boolean;
+    verifiedAt: string | null;
+    hasDiscrepancies: boolean;
+  } | null;
+  acceptance: {
+    signed: number;
+    total: number;
+    pendingMembers: { id: string; name: string; email: string }[];
+  };
+  returns: {
+    allReturned: boolean;
+    pendingKitUnits: number;
+    pendingLoanUnits: number;
+    hasReturnNotes: boolean;
+  };
+  /** Falta verificar, faltan firmas, hay discrepancias o quedan devoluciones. */
+  needsAttention: boolean;
+}
+
+export interface CourseOverview {
+  course: { id: string; name: string; year: number; semester: number };
+  totals: CourseOverviewTotals;
+  groups: CourseOverviewGroup[];
+}
