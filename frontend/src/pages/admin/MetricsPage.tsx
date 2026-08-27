@@ -17,9 +17,16 @@ import { Badge } from '@/components/ui/Badge';
 import { TagBadgeList } from '@/components/ui/TagBadge';
 import { Button } from '@/components/ui/Button';
 import { Checkbox } from '@/components/ui/Checkbox';
+import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Table, Td, Th } from '@/components/ui/Table';
 import { Loading, ErrorState } from '@/components/ui/States';
+import {
+  MAX_THRESHOLD,
+  THRESHOLD_PRESETS,
+  isValidThreshold,
+  useMetricsThresholdStore,
+} from '@/store/metricsThreshold';
 
 function useUcnColors() {
   return useMemo(() => {
@@ -133,8 +140,6 @@ function StatCard({
 
 // --- b) Reposición de bodega ---
 
-/** Umbral de "stock bajo" configurable desde la UI. */
-const THRESHOLDS = [5, 10, 20] as const;
 /** Cuántas columnas caben cómodamente en el gráfico. */
 const REPLENISH_TOP_N = 12;
 /** Ancho reservado por columna: bajo esto el eje X se vuelve ilegible. */
@@ -148,8 +153,8 @@ function shortName(name: string, max = 14): string {
 function ReplenishSection() {
   const stock = useStock();
   const colors = useUcnColors();
-  const [threshold, setThreshold] = useState<number>(5);
-  const [onlyBelow, setOnlyBelow] = useState(false);
+  // Persistido: sobrevive a recargas y a salir de /admin/metricas.
+  const { threshold, onlyBelow, setThreshold, setOnlyBelow } = useMetricsThresholdStore();
   const [copied, setCopied] = useState(false);
 
   const rows = useMemo(() => {
@@ -197,23 +202,13 @@ function ReplenishSection() {
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-text-primary">Componentes por reponer</h2>
           <p className="mt-1 text-sm text-text-secondary">
-            Los {REPLENISH_TOP_N} con menor disponibilidad, de menor a mayor.
+            Los {REPLENISH_TOP_N} con menor disponibilidad, de menor a mayor. Se considera
+            stock bajo con <strong className="text-text-primary">{threshold} o menos</strong>{' '}
+            disponibles.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-32">
-            <Select
-              label="Umbral bajo"
-              value={String(threshold)}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-            >
-              {THRESHOLDS.map((t) => (
-                <option key={t} value={t}>
-                  ≤ {t}
-                </option>
-              ))}
-            </Select>
-          </div>
+        <div className="flex min-w-0 flex-wrap items-end gap-x-4 gap-y-2">
+          <ThresholdControl value={threshold} onChange={setThreshold} />
           <Checkbox
             checked={onlyBelow}
             onChange={(e) => setOnlyBelow(e.target.checked)}
@@ -296,6 +291,77 @@ function ReplenishSection() {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Umbral libre: input numérico + accesos rápidos. Solo se propaga al store cuando
+ * el valor es válido, así que un campo vacío o fuera de rango nunca deja el gráfico
+ * sin colorear: sigue vigente el último umbral bueno y se muestra un hint.
+ */
+function ThresholdControl({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  // Borrador local: permite dejar el campo vacío mientras se escribe.
+  const [draft, setDraft] = useState(String(value));
+  const parsed = Number(draft);
+  const invalid = draft.trim() === '' || !isValidThreshold(parsed);
+
+  const apply = (raw: string) => {
+    setDraft(raw);
+    const n = Number(raw);
+    if (raw.trim() !== '' && isValidThreshold(n)) onChange(n);
+  };
+
+  const applyPreset = (n: number) => {
+    setDraft(String(n));
+    onChange(n);
+  };
+
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="flex min-w-0 flex-wrap items-end gap-2">
+        <Input
+          label="Umbral bajo"
+          type="number"
+          min={0}
+          max={MAX_THRESHOLD}
+          className="w-24"
+          invalid={invalid}
+          value={draft}
+          onChange={(e) => apply(e.target.value)}
+          // Al salir del campo se restaura el último valor válido.
+          onBlur={() => setDraft(String(value))}
+          aria-describedby="threshold-hint"
+        />
+        <div className="flex shrink-0 flex-wrap gap-1">
+          {THRESHOLD_PRESETS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => applyPreset(n)}
+              aria-pressed={value === n}
+              className={`min-h-[36px] rounded-full border px-3 text-xs font-semibold transition-colors ${
+                value === n
+                  ? 'border-primary bg-primary text-text-on-primary'
+                  : 'border-border bg-surface-card text-text-secondary hover:border-primary'
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p id="threshold-hint" className={`text-xs ${invalid ? 'text-danger' : 'text-text-muted'}`}>
+        {invalid
+          ? `Valor inválido; se sigue usando ${value}. Escribe un entero entre 0 y ${MAX_THRESHOLD}.`
+          : `Entero entre 0 y ${MAX_THRESHOLD}.`}
+      </p>
+    </div>
   );
 }
 

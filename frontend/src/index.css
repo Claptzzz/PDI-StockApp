@@ -113,3 +113,22 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/*
+ * Fila scrollable sin barra visible.
+ *
+ * `overflow-x-auto` obliga a `overflow-y` a computar `auto` (regla del spec: si un
+ * eje deja de ser `visible`, el otro también). Con scrollbars clásicos (GTK en
+ * Linux, Windows) eso dibuja una barra VERTICAL con sus dos flechas ↑↓ en cuanto
+ * hay 1px de desbordamiento por redondeo de fuentes — flechas que no llevan a
+ * ninguna parte. Se corta de raíz ocultando la barra en ambos ejes; el scroll
+ * horizontal sigue funcionando por gesto, rueda y teclado.
+ */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Edge legacy */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chromium / WebKit */
+}

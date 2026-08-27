@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Table, Td, Th } from '@/components/ui/Table';
+import { Tabs, type TabDef } from '@/components/ui/Tabs';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TagBadgeList } from '@/components/ui/TagBadge';
 import { TagChips } from '@/components/ui/TagChips';
@@ -33,6 +34,12 @@ import { Loading, ErrorState, EmptyState } from '@/components/ui/States';
 
 type Tab = 'components' | 'templates' | 'tags';
 
+const WAREHOUSE_TABS: TabDef<Tab>[] = [
+  { id: 'components', label: 'Componentes' },
+  { id: 'tags', label: 'Etiquetas' },
+  { id: 'templates', label: 'Plantillas de kit' },
+];
+
 export function WarehousePage() {
   const [tab, setTab] = useState<Tab>('components');
 
@@ -41,20 +48,7 @@ export function WarehousePage() {
       <h1 className="text-3xl font-bold text-text-primary">Bodega</h1>
       <p className="mt-1 text-text-secondary">Componentes, etiquetas y plantillas de kit.</p>
 
-      {/* Scroll horizontal en las pestañas para que no desborden a ~375px. */}
-      <div className="mt-5 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-        <div className="flex w-max min-w-full gap-1 border-b border-border">
-          <TabButton active={tab === 'components'} onClick={() => setTab('components')}>
-            Componentes
-          </TabButton>
-          <TabButton active={tab === 'tags'} onClick={() => setTab('tags')}>
-            Etiquetas
-          </TabButton>
-          <TabButton active={tab === 'templates'} onClick={() => setTab('templates')}>
-            Plantillas de kit
-          </TabButton>
-        </div>
-      </div>
+      <Tabs tabs={WAREHOUSE_TABS} active={tab} onChange={setTab} className="mt-5" />
 
       <div className="mt-5">
         {tab === 'components' ? (
@@ -69,29 +63,6 @@ export function WarehousePage() {
   );
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 text-sm font-semibold transition-colors ${
-        active
-          ? 'border-primary text-primary'
-          : 'border-transparent text-text-secondary hover:text-text-primary'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 // ----------------------------------------------------------------------------
 // Componentes
