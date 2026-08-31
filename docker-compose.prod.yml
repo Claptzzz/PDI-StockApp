@@ -1,0 +1,82 @@
+# ============================================================================
+#  Despliegue AUTOCONTENIDO en un servidor propio.
+#
+#  Levanta toda la plataforma (Postgres + backend + SPA con nginx) y publica UN
+#  SOLO puerto: el de `web`. El backend y la base NO se exponen al host; viven en
+#  la red interna del compose.
+#
+#  La app se sirve bajo el subpath ${APP_BASE_PATH} (por defecto /inventario/).
+#  El reverse proxy de la universidad debe hacer PASS-THROUGH del path completo,
+#  SIN recortar el prefijo. Ver el README, sección "Despliegue en servidor propio".
+#
+#  Uso:
+#    cp .env.example .env    # y completa los valores
+#    docker compose -f docker-compose.prod.yml up -d --build
+#
+#  El docker-compose.yml (sin sufijo) es el de DESARROLLO: publica la base y el
+#  backend en el host para poder depurarlos. No usarlo en el servidor.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pdi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pdi}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-pdi} -d ${POSTGRES_DB:-pdi}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Sin `ports`: la base solo es accesible desde la red del compose.
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Prefijo de la API. nginx recorta el subpath y reenvía a /api/…
+      API_PREFIX: ${API_PREFIX:-api}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-pdi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pdi}?schema=public}
+      DIRECT_URL: ${DIRECT_URL:-${DATABASE_URL:-postgresql://${POSTGRES_USER:-pdi}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pdi}?schema=public}}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?define GOOGLE_CLIENT_ID en .env}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?define ADMIN_EMAILS en .env}
+      PROFESSOR_EMAILS: ${PROFESSOR_EMAILS:-}
+      # Vacío a propósito: el SPA y la API comparten origen a través de nginx, así
+      # que no se habilita CORS. Solo hace falta si sirves el front desde otro dominio.
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_BUCKET: ${SUPABASE_BUCKET:-loan-evidence}
+    # Sin `ports`: solo accesible desde `web`.
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # El prefijo se hornea en el bundle: debe coincidir con el que sirve nginx.
+        VITE_BASE_PATH: ${APP_BASE_PATH:-/inventario/}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      APP_BASE_PATH: ${APP_BASE_PATH:-/inventario/}
+      APP_BACKEND_URL: http://backend:3000
+      APP_MAX_BODY_SIZE: ${APP_MAX_BODY_SIZE:-10M}
+      # Se inyecta en config.js al arrancar: cambiarlo no exige reconstruir la imagen.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?define GOOGLE_CLIENT_ID en .env}
+    ports:
+      - '${APP_PORT:-8080}:80'
+
+volumes:
+  pgdata:

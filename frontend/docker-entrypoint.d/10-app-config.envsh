@@ -1,0 +1,39 @@
+#!/bin/sh
+# Se SOURCEA (extensión .envsh) antes de que la imagen procese las plantillas, así
+# las variables derivadas quedan disponibles para envsubst.
+set -e
+
+# Prefijo bajo el que se sirve la app; siempre con barra inicial y final.
+APP_BASE_PATH="${APP_BASE_PATH:-/inventario/}"
+case "$APP_BASE_PATH" in
+  /*) ;;
+  *) APP_BASE_PATH="/$APP_BASE_PATH" ;;
+esac
+case "$APP_BASE_PATH" in
+  */) ;;
+  *) APP_BASE_PATH="$APP_BASE_PATH/" ;;
+esac
+
+# Versión sin la barra final, para el redirect de cortesía (/inventario -> /inventario/).
+APP_BASE_PATH_NOSLASH="${APP_BASE_PATH%/}"
+
+APP_BACKEND_URL="${APP_BACKEND_URL:-http://backend:3000}"
+APP_MAX_BODY_SIZE="${APP_MAX_BODY_SIZE:-10M}"
+
+export APP_BASE_PATH APP_BASE_PATH_NOSLASH APP_BACKEND_URL APP_MAX_BODY_SIZE
+
+# --- Config de RUNTIME del SPA -------------------------------------------
+# Se regenera en cada arranque: cambiar GOOGLE_CLIENT_ID solo exige reiniciar el
+# contenedor, no reconstruir la imagen.
+config_file="/usr/share/nginx/html${APP_BASE_PATH}config.js"
+cat > "$config_file" <<EOF
+// Generado por docker-entrypoint.d/10-app-config.envsh al arrancar el contenedor.
+window.__APP_CONFIG__ = {
+  googleClientId: "${GOOGLE_CLIENT_ID:-}",
+};
+EOF
+
+echo "==> SPA bajo ${APP_BASE_PATH} · API -> ${APP_BACKEND_URL} · config.js generado"
+if [ -z "${GOOGLE_CLIENT_ID:-}" ]; then
+  echo "==> AVISO: GOOGLE_CLIENT_ID vacío; el login con Google no funcionará."
+fi

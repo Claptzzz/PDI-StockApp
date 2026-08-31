@@ -82,11 +82,24 @@ export class EnvironmentVariables {
 
   /**
    * Origen(es) permitido(s) para CORS. Puede ser una lista separada por comas
-   * (dominio de prod + localhost). Requerido: el arranque falla si falta.
+   * (dominio de prod + localhost).
+   *
+   * OPCIONAL desde la Fase 12: en el despliegue autocontenido (Docker + nginx) el
+   * SPA y la API comparten origen, así que no hay CORS que configurar y se deja
+   * vacío. Sigue siendo necesario cuando el front vive en otro dominio
+   * (Vercel -> Azure), donde su ausencia bloquearía todas las llamadas.
    */
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  FRONTEND_ORIGIN: string;
+  FRONTEND_ORIGIN?: string;
+
+  /**
+   * Prefijo global de las rutas de la API ("api" por defecto). `GET /health` queda
+   * siempre fuera del prefijo, por compatibilidad con los health checks de Azure.
+   */
+  @IsOptional()
+  @IsString()
+  API_PREFIX?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

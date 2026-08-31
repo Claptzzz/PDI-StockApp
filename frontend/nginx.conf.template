@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# nginx del contenedor `web`: sirve el SPA y hace de proxy al backend, todo bajo
+# el MISMO ORIGEN y bajo el prefijo ${APP_BASE_PATH} (por defecto /inventario/).
+#
+# Se procesa con envsubst al arrancar (ver docker-entrypoint.d/10-app-config.envsh).
+# Solo se sustituyen las variables APP_* — el filtro NGINX_ENVSUBST_FILTER protege
+# las variables propias de nginx como $uri o $host.
+#
+# NOTA: este archivo asume un prefijo distinto de "/" (los redirect de cortesía
+# chocarían con `location /`). El despliegue en la raíz es el de Vercel, que no
+# usa este contenedor.
+# ---------------------------------------------------------------------------
+
+server {
+    listen 80;
+    server_name _;
+
+    # Fotos de evidencia de los préstamos: el default de nginx (1M) se queda corto.
+    client_max_body_size ${APP_MAX_BODY_SIZE};
+
+    root /usr/share/nginx/html;
+
+    # Redirects RELATIVOS (`Location: /inventario/` en vez de absolutos). nginx solo
+    # ve HTTP en el puerto interno, así que construir la URL absoluta perdería el
+    # puerto y el esquema reales del reverse proxy de delante.
+    absolute_redirect off;
+
+    # Cortesía: entrar por la raíz o sin la barra final lleva a la app.
+    location = / {
+        return 301 ${APP_BASE_PATH};
+    }
+    location = ${APP_BASE_PATH_NOSLASH} {
+        return 301 ${APP_BASE_PATH};
+    }
+
+    # --- API -----------------------------------------------------------------
+    # El health del backend vive FUERA del prefijo de API (se excluyó en
+    # main.ts para no romper el smoke test de Azure), así que se mapea aparte.
+    # `location =` (match exacto) gana al prefijo de abajo.
+    location = ${APP_BASE_PATH}api/health {
+        proxy_pass ${APP_BACKEND_URL}/health;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+    }
+
+    # Recorta el prefijo del subpath: /inventario/api/foo -> backend /api/foo
+    location ${APP_BASE_PATH}api/ {
+        proxy_pass ${APP_BACKEND_URL}/api/;
+        include /etc/nginx/conf.d/proxy-headers.inc;
+    }
+
+    # --- SPA -----------------------------------------------------------------
+    # Assets con hash en el nombre: inmutables, se cachean a tope.
+    location ${APP_BASE_PATH}assets/ {
+        # Un solo Cache-Control: `expires` emitiría otro y quedarían duplicados.
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # index.html y config.js NUNCA se cachean: uno referencia los assets con hash
+    # y el otro trae la config de runtime, que debe poder cambiar sin reconstruir.
+    location = ${APP_BASE_PATH}config.js {
+        add_header Cache-Control "no-store" always;
+        include /etc/nginx/conf.d/spa-headers.inc;
+        try_files $uri =404;
+    }
+
+    location ${APP_BASE_PATH} {
+        # Fallback del SPA: recargar /inventario/admin/bodega debe servir el index,
+        # no un 404, para que react-router resuelva la ruta en el cliente.
+        try_files $uri $uri/ ${APP_BASE_PATH}index.html;
+
+        add_header Cache-Control "no-store" always;
+        include /etc/nginx/conf.d/spa-headers.inc;
+    }
+}

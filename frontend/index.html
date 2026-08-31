@@ -2,12 +2,19 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="src/assets/LogoUCN_acentuado.png" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PDI — Préstamo de Kits de Arduino</title>
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Config de RUNTIME: la sirve nginx generada al arrancar el contenedor, así el
+      Client ID de Google se cambia sin reconstruir la imagen. En dev y en Vercel es
+      un no-op y el valor sale de VITE_GOOGLE_CLIENT_ID (build-time).
+      `%BASE_URL%` lo sustituye Vite por el prefijo configurado.
+    -->
+    <script src="%BASE_URL%config.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
