@@ -1,13 +1,14 @@
 import axios from 'axios';
 import { useAuthStore } from '@/store/auth';
 import { queryClient } from '@/lib/queryClient';
+import { resolveApiBaseUrl } from '@/lib/runtimeConfig';
 
 /**
  * Cliente HTTP base para la API del backend.
- * La URL se toma de la variable de entorno `VITE_API_URL`.
+ * Ver `resolveApiBaseUrl`: absoluta con VITE_API_URL, relativa al mismo origen si no.
  */
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: resolveApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -34,8 +35,11 @@ api.interceptors.response.use(
 
       if (status === 401 && !isLoginRequest) {
         useAuthStore.getState().logout();
-        if (window.location.pathname !== '/login') {
-          window.location.assign('/login');
+        // `assign` no pasa por el router, así que hay que anteponer el prefijo del
+        // despliegue a mano; si no, bajo /inventario/ saltaría fuera de la app.
+        const loginPath = `${import.meta.env.BASE_URL}login`;
+        if (window.location.pathname !== loginPath) {
+          window.location.assign(loginPath);
         }
       }
 
