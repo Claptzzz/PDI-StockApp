@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveRoles } from '../auth/role.util';
+import { resolveRoles, userHasRole } from '../auth/role.util';
 import { hasRole, type AuthenticatedUser } from '../auth/interfaces/auth.types';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
@@ -181,7 +181,9 @@ export class CoursesService {
   private async resolveStudentUser(email: string) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
-      if (existing.role !== Role.STUDENT) {
+      // Contra el ARRAY de roles, igual que la comprobación de `derivedRoles` en
+      // `addAssistant`: un alumno que además es admin sigue pudiendo ser ayudante.
+      if (!userHasRole(existing, Role.STUDENT)) {
         throw new BadRequestException('El usuario existe y no es un alumno');
       }
       return existing;
@@ -417,8 +419,7 @@ export class CoursesService {
     if (existing) {
       // Con roles múltiples basta con que TENGA PROFESSOR o ADMIN; ser además
       // estudiante ya no lo descalifica.
-      const roles = existing.roles.length > 0 ? existing.roles : [existing.role];
-      if (!roles.includes(Role.PROFESSOR) && !roles.includes(Role.ADMIN)) {
+      if (!userHasRole(existing, Role.PROFESSOR, Role.ADMIN)) {
         throw new BadRequestException('El usuario existe y es un estudiante, no un profesor');
       }
       return existing;

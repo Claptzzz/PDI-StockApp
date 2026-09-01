@@ -320,6 +320,7 @@ function AcceptanceBlock({ data }: { data: MyKitDetail }) {
   const acceptedCount = data.members.length - pending.length;
 
   const submit = () => {
+    if (!data.termsVersion) return;
     setError(null);
     accept.mutate(data.termsVersion, {
       onSuccess: () => toast.success('Condiciones aceptadas.'),
@@ -365,6 +366,22 @@ function AcceptanceBlock({ data }: { data: MyKitDetail }) {
         <>
           <p className="mt-2 rounded-[var(--radius)] border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-ocre">
             Primero deben verificar el kit. Una vez verificado podrás aceptar las condiciones.
+          </p>
+          <Checkbox
+            disabled
+            checked={false}
+            onChange={() => undefined}
+            label="Acepto las condiciones de préstamo"
+          />
+          {groupStatus}
+        </>
+      ) : !data.canAccept ? (
+        // El curso aún no tiene condiciones publicadas: el kit se ve y se verifica
+        // igual, pero no hay texto que firmar todavía.
+        <>
+          <p className="mt-2 rounded-[var(--radius)] border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-ocre">
+            {data.acceptBlockedReason ??
+              'Las condiciones de préstamo de este curso todavía no están disponibles.'}
           </p>
           <Checkbox
             disabled

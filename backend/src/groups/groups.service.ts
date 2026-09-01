@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, Role } from '@prisma/client';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveRoles } from '../auth/role.util';
+import { resolveRoles, userHasRole } from '../auth/role.util';
 
 /** Deriva un nombre legible desde la parte local del correo. */
 function nameFromEmail(email: string): string {
@@ -151,7 +151,9 @@ export class GroupsService {
     }
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing && existing.role !== Role.STUDENT) {
+    // Mismo criterio que la comprobación de arriba: se mira el ARRAY de roles, no el
+    // principal, para no dejar fuera al alumno que además acumula ADMIN o PROFESSOR.
+    if (existing && !userHasRole(existing, Role.STUDENT)) {
       throw new BadRequestException('El correo pertenece a un usuario que no es alumno');
     }
 
@@ -279,7 +281,8 @@ export class GroupsService {
     }
 
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
-    if (existingUser && existingUser.role !== Role.STUDENT) {
+    // Contra el array de roles: un alumno que además es admin sigue siendo importable.
+    if (existingUser && !userHasRole(existingUser, Role.STUDENT)) {
       return { ok: false, email, reason: 'El correo pertenece a un usuario que no es alumno' };
     }
 

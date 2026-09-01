@@ -9,10 +9,19 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { deriveLoanStatus } from '../loans/loans.service';
-import { TermsService } from '../terms/terms.service';
+import { ResolvedTerms, TermsService } from '../terms/terms.service';
 import { RESOLUTION_SELECT } from '../kits/discrepancies.service';
 import { VerifyKitDto } from './dto/verify-kit.dto';
 import { AcceptTermsDto } from './dto/accept-terms.dto';
+
+/**
+ * Motivo que ve el ALUMNO cuando el curso todavía no tiene condiciones publicadas.
+ * Deliberadamente distinto del mensaje de `TermsService`, que instruye al admin sobre
+ * un panel al que el alumno no tiene acceso.
+ */
+const TERMS_NOT_AVAILABLE =
+  'Las condiciones de préstamo de este curso todavía no están disponibles. ' +
+  'Avisa a tu profesor o ayudante para poder firmarlas.';
 
 @Injectable()
 export class StudentService {
@@ -285,12 +294,44 @@ export class StudentService {
     };
   }
 
-  /** Detalle del kit para la pantalla de verificación del alumno. */
+  /**
+   * Condiciones vigentes del curso, o `null` si todavía no hay ninguna publicada.
+   *
+   * `resolveForCourse` lanza 409 cuando no hay documento resoluble. Eso es correcto al
+   * FIRMAR, pero no al LEER: dejaría al alumno sin pantalla de verificación por un
+   * problema de configuración que él no puede arreglar. Aquí el 409 se traduce a
+   * `null` y quien llama decide. El 404 (curso inexistente) sí es un error real y se
+   * deja pasar.
+   */
+  private async currentTerms(courseId: string): Promise<ResolvedTerms | null> {
+    try {
+      return await this.terms.resolveForCourse(courseId);
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Detalle del kit para la pantalla de verificación del alumno.
+   *
+   * VER el kit no depende de que existan condiciones: si no las hay, el detalle llega
+   * igual con `canAccept: false` y el motivo, y solo se bloquea la firma.
+   */
   async getMyKit(studentId: string, kitId: string) {
     const kit = await this.loadMyKit(studentId, kitId);
     // La etiqueta vigente depende del documento asignado al curso del kit.
-    const terms = await this.terms.resolveForCourse(kit.courseId);
-    return { ...this.serializeMyKit(kit, studentId), termsVersion: terms.version };
+    const terms = await this.currentTerms(kit.courseId);
+    return {
+      ...this.serializeMyKit(kit, studentId),
+      /** Versión vigente que se reenvía al firmar; null si aún no hay ninguna. */
+      termsVersion: terms?.version ?? null,
+      /** ¿Hay condiciones vigentes que firmar? (independiente de la verificación). */
+      canAccept: terms !== null,
+      acceptBlockedReason: terms === null ? TERMS_NOT_AVAILABLE : null,
+    };
   }
 
   /**
@@ -362,7 +403,12 @@ export class StudentService {
     if (kit.verifiedAt === null) {
       throw new ConflictException('Primero deben verificar el kit');
     }
-    const terms = await this.terms.resolveForCourse(kit.courseId);
+
+    // Firmar SÍ exige condiciones vigentes; el mensaje va dirigido al alumno.
+    const terms = await this.currentTerms(kit.courseId);
+    if (!terms) {
+      throw new ConflictException(TERMS_NOT_AVAILABLE);
+    }
     if (dto.termsVersion !== terms.version) {
       throw new ConflictException('Las condiciones cambiaron, recarga la página');
     }

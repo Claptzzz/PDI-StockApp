@@ -39,7 +39,12 @@ STUDENT / PROFESSOR / ADMIN.
 ├── backend/               # API NestJS + Prisma
 │   ├── Dockerfile         # build multi-stage (imagen de producción)
 │   ├── docker-entrypoint.sh
-│   └── prisma/
+│   ├── prisma/
+│   └── test/              # suite e2e (Jest + Supertest contra Postgres real)
+│       ├── *.e2e-spec.ts  # un archivo por dominio
+│       ├── setup/         # apply-env (setupFiles) + mocks (setupFilesAfterEnv)
+│       ├── support/       # app de test, reset de la BD, fixtures, JWT de test
+│       └── mocks/         # Google y Supabase (los únicos servicios externos)
 ├── frontend/              # SPA React + Vite
 │   ├── Dockerfile         # build + nginx que sirve el SPA bajo el subpath
 │   ├── nginx.conf.template        # plantilla (envsubst) del server nginx
@@ -129,6 +134,16 @@ docker compose down -v
 | `SUPABASE_URL`              |    Sí     | URL del proyecto Supabase (Storage).                                        |
 | `SUPABASE_SERVICE_ROLE_KEY` |    Sí     | Service role key de Supabase.                                              |
 | `SUPABASE_BUCKET`           |    Sí     | Nombre del bucket de evidencia.                                            |
+
+### Tests (`backend/.env.test`)
+
+| Variable            | Requerida | Descripción                                                                 |
+| ------------------- | :-------: | ---------------------------------------------------------------------------- |
+| `TEST_DATABASE_URL` |    Sí     | Base **exclusiva** para `npm run test:e2e`. El nombre de la base o del schema debe contener `test`. Ver [Tests e2e del backend](#tests-e2e-del-backend). |
+
+El resto de variables de la suite (secreto JWT, allowlists de roles, credenciales
+falsas de Google y Supabase) las fija `backend/test/support/env.ts`: no hace falta
+declararlas en ningún sitio.
 
 ### Frontend (`frontend/.env`)
 
@@ -303,6 +318,108 @@ llamaría a las rutas viejas (404) o el nuevo a un backend sin prefijo. Si neces
 desplegarlos por separado, desactiva el prefijo en ambos lados mientras tanto:
 `API_PREFIX=""` en el backend y `VITE_API_PREFIX=""` en el build del frontend.
 
+## Tests e2e del backend
+
+La suite levanta la **aplicación real** (todos los módulos, los guards globales y el
+`ValidationPipe`) y la golpea por HTTP con Supertest contra una **base de datos
+PostgreSQL de verdad**. No hay mocks de Prisma ni SQLite: lo que se verifica es el
+comportamiento observable de la API y el efecto real en la base.
+
+Los únicos dos dobles son los servicios verdaderamente externos:
+
+| Servicio                                    | Doble                        | Por qué |
+| ------------------------------------------- | ---------------------------- | ------- |
+| `google-auth-library` (verificar el idToken) | `test/mocks/google.mock.ts`   | No se puede firmar un idToken real de Google en CI. El "token" de test **es** el payload en base64url, así que no hay estado mutable que resetear. |
+| `@supabase/supabase-js` (Storage)            | `test/mocks/supabase.mock.ts` | Bucket en memoria; permite afirmar qué se subió y qué se borró (incluida la limpieza de fotos huérfanas). |
+
+### Correr la suite en local
+
+```bash
+cd backend
+cp .env.test.example .env.test     # solo define TEST_DATABASE_URL
+npm run test:e2e                   # o npm run test:e2e:watch
+```
+
+La primera ejecución **crea la base de test** (si el usuario de Postgres tiene permiso
+`CREATEDB`) y aplica las migraciones con `prisma migrate deploy`. No hace falta ningún
+paso manual más.
+
+> ⚠️ La suite hace `TRUNCATE` de todas las tablas entre tests. Por eso `global-setup.ts`
+> se **niega a arrancar** si el nombre de la base (o del schema) no contiene `test`:
+> apuntar `TEST_DATABASE_URL` a la base de desarrollo por descuido borraría los datos.
+
+Si prefieres no crear una base aparte, sirve un schema distinto dentro de la misma:
+
+```
+TEST_DATABASE_URL="postgresql://pdi:pdi@localhost:5432/pdi?schema=test_e2e"
+```
+
+### Qué cubre
+
+| Archivo                          | Área |
+| -------------------------------- | ---- |
+| `auth.e2e-spec.ts`               | Login con Google, `resolveRoles` aditivo, unión de roles sin restar, cuentas deshabilitadas, protección de rutas, prefijo global de la API. |
+| `authorization.e2e-spec.ts`      | Matriz de permisos (ADMIN / profesor autorizado / profesor sin autorizar / ayudante activo / ayudante desactivado / alumno / ajeno) sobre endpoints de gestión y de operación, usuarios multi-rol, aislamiento entre cursos y lectura del catálogo. |
+| `stock.e2e-spec.ts`              | Disponibilidad calculada: compromiso por kits y préstamos, barrera al asignar, edición de `totalStock`, préstamos con y sin componente del catálogo. |
+| `kits.e2e-spec.ts`               | Unicidad de `code` por curso (mismo código en otro semestre), XOR `templateId`/`items`, snapshot inmutable, `PATCH` solo del código. |
+| `returns.e2e-spec.ts`            | Devoluciones parciales y totales, `ReturnEvent` con nota y receptor, cierre automático del kit, fotos de préstamo en el bucket. |
+| `verification-terms.e2e-spec.ts` | Verificación grupal (una sola vez), aceptación individual, resolución del documento de condiciones por curso, inmutabilidad de las versiones publicadas. |
+| `discrepancies.e2e-spec.ts`      | Las cuatro acciones (`ACKNOWLEDGED`, `REPLACED`, `DEDUCTED`, `WRITE_OFF`) con sus efectos verificados en la base, y las barreras de cada una. |
+| `csv-import.e2e-spec.ts`         | Reporte por fila, idempotencia, "un alumno un grupo por curso", grupos homónimos en cursos distintos, validación del archivo y alta manual de integrantes. |
+
+### Cómo está montado
+
+- **Suite autosuficiente.** `test/setup/apply-env.ts` (hook `setupFiles`, el más temprano
+  del worker) deja en `process.env` **todas** las variables que exige
+  `src/config/env.validation.ts`, `DATABASE_URL` incluida y derivada de
+  `TEST_DATABASE_URL`. Corre igual en local y en CI sin depender de que exista un `.env`;
+  lo único que hay que darle de fuera es `TEST_DATABASE_URL`.
+  > ⚠️ `ConfigModule.forRoot()` está en el argumento del decorador `@Module`, así que
+  > **valida `process.env` en cuanto se importa `src/app.module.ts`**, no al compilar la
+  > inyección de dependencias. Nada que corra antes de `applyTestEnv()` puede importar
+  > `test/support/app.ts` (que arrastra `AppModule`): por eso `global-setup.ts` solo
+  > importa de `test/support/env.ts`.
+- **Dos barreras contra truncar la base equivocada**: `global-setup.ts` rechaza una
+  `TEST_DATABASE_URL` cuyo nombre de base o schema no contenga `test`, y `createTestApp`
+  comprueba con `current_database()` a qué base quedó conectada la app de verdad —que es
+  la que `resetDb` va a vaciar— antes de que se borre nada.
+- **Una app por archivo** (`beforeAll` → `createTestApp()`), que replica el bootstrap de
+  `src/main.ts` incluido el prefijo `/api` y la exclusión de `GET /health`.
+- **Reset por TRUNCATE** (`resetDb`) en cada `beforeEach`. Se eligió frente a "una
+  transacción por test con rollback" porque los tests atraviesan HTTP real: el handler
+  toma sus propias conexiones del pool y varios flujos abren su propio `$transaction`,
+  así que no habría forma de compartir la transacción del test sin sustituir el
+  `PrismaService` por un doble, que es justo lo que esta suite evita. `CASCADE` resuelve
+  el orden de las claves foráneas. **Ningún test depende del orden**: la suite pasa
+  igual con `jest --randomize`.
+- **`maxWorkers: 1`.** Todos los archivos comparten la misma base; ejecutarlos en
+  paralelo haría que el `TRUNCATE` de uno borrara los datos de otro.
+- **Autenticación**: como el login real exige Google, `as(app, usuario)` devuelve un
+  agente de Supertest con un JWT firmado con el mismo secreto que valida `JwtStrategy`.
+  No salta la autenticación: el token pasa por passport-jwt y por la recarga del usuario
+  desde la base, igual que en producción.
+
+### Añadir tests nuevos
+
+1. Crea `backend/test/<área>.e2e-spec.ts` (el patrón es `*.e2e-spec.ts`).
+2. Copia el esqueleto: `createTestApp()` en `beforeAll`, `app.close()` en `afterAll`,
+   `resetDb(prisma)` en `beforeEach`.
+3. Monta el escenario con los helpers de `test/support/fixtures.ts`
+   (`createCourse`, `createProfessor({ authorizedIn: curso })`, `createGroup`,
+   `createComponent`, `createKit`, `createDefaultTerms`…). Son componibles; si te falta
+   uno, añádelo ahí en vez de escribir Prisma suelto en el spec.
+4. Llama a la API con `as(app, usuario)` y **verifica el efecto en la base** con Prisma,
+   no solo el código de estado.
+5. Nombra el test por la REGLA, en español: `'un ayudante no puede crear grupos'`, no
+   `'POST /groups devuelve 403'`.
+
+> **Convención para un bug encontrado y aún no corregido:** escribe el test que expresa
+> la regla correcta y márcalo con `it.failing(...)`, con el diagnóstico en un comentario
+> encima. Pasa mientras el bug exista y se pone en rojo al arreglarse, que es la señal
+> para cambiarlo a `it(...)`. Ahora mismo **no queda ninguno**: los tres que abrió la
+> Fase 13 se corrigieron y ya son `it(...)` normales, con un comentario que recuerda la
+> regresión que cubren.
+
 ## CI/CD
 
 Los pipelines viven en [.github/workflows/](.github/workflows/). Metodología: **Trunk
@@ -312,7 +429,7 @@ Based Development** — ramas de vida corta que se integran a `main` vía PR.
 
 | Workflow                 | Se dispara                                            | Qué hace                                                                                                        |
 | ------------------------ | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| **ci.yml**               | `pull_request` → `main` y `push` a `main`             | Quality gate. Jobs `backend` y `frontend` en paralelo: `npm ci`, lint y build (backend además `prisma generate`). Si falla, no se mergea. |
+| **ci.yml**               | `pull_request` → `main` y `push` a `main`             | Quality gate. Jobs `backend` (lint + build), `backend-e2e` (suite e2e contra un `postgres:16` de servicio) y `frontend` (lint + build), en paralelo. Si cualquiera falla, no se mergea. |
 | **deploy-backend.yml**   | `push` a `main` + `workflow_dispatch` (manual)        | Construye la imagen del backend, la publica en GHCR (`latest` + `sha`) y la despliega en Azure App Service. Termina con un smoke test a `/health`. |
 | **keep-alive.yml**       | `cron` cada 3 días + `workflow_dispatch`              | Hace un ping ligero a Supabase Storage para que el proyecto free no se pause por inactividad. No falla si la respuesta no es 200. |
 

@@ -14,16 +14,29 @@ import {
   hasReturnNotes,
 } from '../returns/return-events.service';
 import { DiscrepanciesService, RESOLUTION_SELECT } from './discrepancies.service';
+import { itemHasDiscrepancy } from './discrepancy.constants';
 import { AssignKitDto } from './dto/assign-kit.dto';
 import { ResolveDiscrepancyDto } from './dto/resolve-discrepancy.dto';
 
-/** Ítem tal como lo necesitan los flags de discrepancia. */
+/**
+ * Ítem tal como lo necesitan los flags de discrepancia. Las resoluciones llegan en uno
+ * de dos formatos según la consulta: los listados piden solo el CONTEO (`_count`) y el
+ * detalle trae la LISTA completa. `resolutionCount` acepta ambos para que listado y
+ * detalle no puedan discrepar.
+ */
 type DiscrepancyItem = {
   verified: boolean;
   verificationNote: string | null;
-  /** Nº de resoluciones registradas; 0 si aún nadie la atendió. */
+  /** Conteo agregado (listados). */
   _count?: { resolutions: number };
+  /** Lista completa (detalle). */
+  resolutions?: unknown[];
 };
+
+/** Nº de resoluciones del ítem, venga como conteo agregado o como lista completa. */
+function resolutionCount(item: DiscrepancyItem): number {
+  return item._count?.resolutions ?? item.resolutions?.length ?? 0;
+}
 
 /**
  * Hay discrepancia PENDIENTE si, ya verificado el kit, algún ítem quedó sin marcar
@@ -32,9 +45,7 @@ type DiscrepancyItem = {
  */
 function hasDiscrepancies(verifiedAt: Date | null, items: DiscrepancyItem[]): boolean {
   if (verifiedAt === null) return false;
-  return items.some(
-    (it) => (!it.verified || it.verificationNote !== null) && (it._count?.resolutions ?? 0) === 0,
-  );
+  return items.some((it) => itemHasDiscrepancy(it) && resolutionCount(it) === 0);
 }
 
 /** Flags resumidos para destacar el kit en los listados del profesor/ayudante. */
@@ -494,8 +505,10 @@ export class KitsService {
         isResolved: it.resolutions.length > 0,
       })),
       verifiedBy: kit.verifiedBy,
-      // Mismos flags resumidos que los listados, para que el shape no diverja.
-      // El detalle trae las resoluciones completas; se adaptan al shape con `_count`.
+      // Mismos flags resumidos que los listados, para que el shape no diverja. Aquí
+      // los ítems traen `resolutions` en vez de `_count`, y `resolutionCount` lo
+      // resuelve: sin eso, el detalle contaría 0 resoluciones siempre y seguiría
+      // marcando discrepancias pendientes ya resueltas.
       ...summaryFlags(
         kit.verifiedAt,
         kit.items,

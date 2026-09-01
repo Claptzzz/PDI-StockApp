@@ -20,6 +20,26 @@ export function primaryRole(roles: Role[]): Role | null {
   return sortByPrivilege(roles)[0] ?? null;
 }
 
+/**
+ * Roles efectivos de un usuario de la base. `roles` es la FUENTE DE VERDAD desde la
+ * Fase 10a; el fallback a `role` cubre las filas anteriores al backfill, que podrían
+ * traer el array vacío.
+ *
+ * Úsalo SIEMPRE para preguntar "¿este usuario es alumno/profesor?": comparar contra
+ * `user.role` responde otra pregunta (cuál es su rol de MAYOR privilegio) y deja fuera
+ * a los usuarios multi-rol; un alumno que además es admin tiene `role = ADMIN` y sigue
+ * siendo alumno.
+ */
+export function effectiveRoles(user: { roles: Role[]; role: Role }): Role[] {
+  return user.roles.length > 0 ? user.roles : [user.role];
+}
+
+/** true si el usuario de la base tiene alguno de los roles indicados. */
+export function userHasRole(user: { roles: Role[]; role: Role }, ...roles: Role[]): boolean {
+  const actual = effectiveRoles(user);
+  return roles.some((role) => actual.includes(role));
+}
+
 /** Une dos conjuntos de roles sin duplicados, ordenados por privilegio. */
 export function unionRoles(...groups: Role[][]): Role[] {
   return sortByPrivilege([...new Set(groups.flat())]);
