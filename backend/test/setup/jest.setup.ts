@@ -4,10 +4,10 @@
  * Aquí viven los DOS únicos mocks de la suite. Se declaran en el setup (y no en cada
  * spec) para que ningún test pueda olvidarse de mockearlos y acabar llamando a un
  * servicio externo de verdad.
+ *
+ * Las variables de entorno NO se aplican aquí sino en `setup/apply-env.ts`, que corre
+ * en el hook `setupFiles`, más temprano (ver el comentario de ese archivo).
  */
-import { applyTestEnv } from '../support/env';
-
-applyTestEnv();
 
 // Único servicio externo del login: la verificación del idToken contra Google.
 jest.mock('google-auth-library', () => {

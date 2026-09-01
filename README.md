@@ -42,6 +42,7 @@ STUDENT / PROFESSOR / ADMIN.
 │   ├── prisma/
 │   └── test/              # suite e2e (Jest + Supertest contra Postgres real)
 │       ├── *.e2e-spec.ts  # un archivo por dominio
+│       ├── setup/         # apply-env (setupFiles) + mocks (setupFilesAfterEnv)
 │       ├── support/       # app de test, reset de la BD, fixtures, JWT de test
 │       └── mocks/         # Google y Supabase (los únicos servicios externos)
 ├── frontend/              # SPA React + Vite
@@ -368,6 +369,20 @@ TEST_DATABASE_URL="postgresql://pdi:pdi@localhost:5432/pdi?schema=test_e2e"
 
 ### Cómo está montado
 
+- **Suite autosuficiente.** `test/setup/apply-env.ts` (hook `setupFiles`, el más temprano
+  del worker) deja en `process.env` **todas** las variables que exige
+  `src/config/env.validation.ts`, `DATABASE_URL` incluida y derivada de
+  `TEST_DATABASE_URL`. Corre igual en local y en CI sin depender de que exista un `.env`;
+  lo único que hay que darle de fuera es `TEST_DATABASE_URL`.
+  > ⚠️ `ConfigModule.forRoot()` está en el argumento del decorador `@Module`, así que
+  > **valida `process.env` en cuanto se importa `src/app.module.ts`**, no al compilar la
+  > inyección de dependencias. Nada que corra antes de `applyTestEnv()` puede importar
+  > `test/support/app.ts` (que arrastra `AppModule`): por eso `global-setup.ts` solo
+  > importa de `test/support/env.ts`.
+- **Dos barreras contra truncar la base equivocada**: `global-setup.ts` rechaza una
+  `TEST_DATABASE_URL` cuyo nombre de base o schema no contenga `test`, y `createTestApp`
+  comprueba con `current_database()` a qué base quedó conectada la app de verdad —que es
+  la que `resetDb` va a vaciar— antes de que se borre nada.
 - **Una app por archivo** (`beforeAll` → `createTestApp()`), que replica el bootstrap de
   `src/main.ts` incluido el prefijo `/api` y la exclusión de `GET /health`.
 - **Reset por TRUNCATE** (`resetDb`) en cada `beforeEach`. Se eligió frente a "una

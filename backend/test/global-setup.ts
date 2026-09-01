@@ -2,8 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
-import { applyTestEnv, testDatabaseUrl } from './support/env';
-import { schemaFromUrl } from './support/app';
+// Solo `support/env`: importar `support/app` traería `AppModule` y su
+// `ConfigModule.forRoot()` se evaluaría ANTES de `applyTestEnv()`, con la validación
+// de entorno fallando por DATABASE_URL/ADMIN_EMAILS vacías.
+import { applyTestEnv, schemaFromUrl, testDatabaseUrl } from './support/env';
 
 const BACKEND_ROOT = join(__dirname, '..');
 

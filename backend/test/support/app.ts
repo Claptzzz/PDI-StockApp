@@ -1,8 +1,13 @@
+/*
+ * ⚠️ Este módulo importa `AppModule`, y con ello dispara `ConfigModule.forRoot()`, que
+ * valida `process.env` en cuanto el módulo se carga. NO lo importes desde
+ * `global-setup.ts` ni desde ningún sitio que corra antes de `applyTestEnv()`.
+ */
 import { INestApplication, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { API_PREFIX } from './env';
+import { API_PREFIX, schemaFromUrl } from './env';
 
 export interface TestContext {
   app: INestApplication;
@@ -35,7 +40,35 @@ export async function createTestApp(): Promise<TestContext> {
 
   await app.init();
 
-  return { app, prisma: app.get(PrismaService) };
+  const prisma = app.get(PrismaService);
+  await assertConnectedToTestDatabase(prisma);
+
+  return { app, prisma };
+}
+
+/**
+ * Segunda barrera de seguridad, complementaria a la de `global-setup.ts`.
+ *
+ * Aquella comprueba `TEST_DATABASE_URL`; esta comprueba a qué base está conectada
+ * REALMENTE la app, que es la que `resetDb` va a truncar. Son cosas distintas: el
+ * cliente de Prisma resuelve su URL desde `process.env.DATABASE_URL` al arrancar, y si
+ * un `.env` de desarrollo llegara a ganar esa precedencia, la suite borraría la base
+ * equivocada sin que la primera barrera se enterase.
+ */
+async function assertConnectedToTestDatabase(prisma: PrismaService): Promise<void> {
+  const [row] = await prisma.$queryRawUnsafe<{ db: string; schema: string }[]>(
+    'SELECT current_database() AS db, current_schema() AS schema',
+  );
+  const looksLikeTest = /test/i.test(row?.db ?? '') || /test/i.test(row?.schema ?? '');
+
+  if (!looksLikeTest) {
+    await prisma.$disconnect();
+    throw new Error(
+      `La app de test quedó conectada a la base "${row?.db}" (schema "${row?.schema}"), que no ` +
+        'parece de test. Revisa que applyTestEnv() se ejecute antes de cargar AppModule: ' +
+        'la suite trunca TODAS las tablas de la base a la que esté conectada.',
+    );
+  }
 }
 
 /**
@@ -50,6 +83,9 @@ export async function createTestApp(): Promise<TestContext> {
  * `CASCADE` resuelve el orden de las FKs y `RESTART IDENTITY` deja los contadores
  * limpios. El resultado es que cada test arranca con la base vacía: no hay estado
  * compartido ni dependencias de orden.
+ *
+ * Que la base sea la de TEST lo garantiza `assertConnectedToTestDatabase`, que corre
+ * en `createTestApp` antes de que este borrado pueda ejecutarse.
  */
 export async function resetDb(prisma: PrismaService): Promise<void> {
   const schema = schemaFromUrl(process.env.DATABASE_URL ?? '');
@@ -61,10 +97,4 @@ export async function resetDb(prisma: PrismaService): Promise<void> {
 
   const list = tables.map((t) => `"${schema}"."${t.tablename}"`).join(', ');
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
-}
-
-/** Esquema declarado en la URL (`?schema=...`); `public` si no viene. */
-export function schemaFromUrl(url: string): string {
-  const match = /[?&]schema=([^&]+)/.exec(url);
-  return match ? decodeURIComponent(match[1]) : 'public';
 }

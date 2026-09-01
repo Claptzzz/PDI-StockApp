@@ -66,20 +66,32 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
+    # Solo INFRAESTRUCTURA. La suite es autosuficiente: `test/setup/apply-env.ts` pone
+    # en process.env todo lo que exige `env.validation.ts` (DATABASE_URL incluida, y
+    # derivada de TEST_DATABASE_URL) antes de que se cargue `src/app.module.ts`.
     env:
-      # Única variable que la suite necesita de fuera: dónde está la base de test.
+      # ÚNICA variable obligatoria: dónde está la base de test. El nombre debe contener
+      # "test" o `global-setup.ts` aborta (la suite hace TRUNCATE de todas las tablas).
+      # Debe cuadrar con POSTGRES_USER/PASSWORD/DB del servicio de arriba.
       TEST_DATABASE_URL: postgresql://pdi:pdi@localhost:5432/pdi_test?schema=public
-      # Secretos de mentira: Google y Supabase están mockeados en los tests, y el
-      # JWT lo firma la propia suite con este mismo secreto.
+
+      # Secretos de mentira, opcionales: Google y Supabase están mockeados y el JWT lo
+      # firma la propia suite con este mismo secreto. Se declaran para que el job sea
+      # explícito sobre qué credenciales usa (ninguna real); si se quitan, la suite cae
+      # a sus valores por defecto y sigue pasando.
       JWT_SECRET: ci-jwt-secret-de-pruebas-1234
       GOOGLE_CLIENT_ID: ci-client-id.apps.googleusercontent.com
       GOOGLE_CLIENT_SECRET: ci-client-secret
       SUPABASE_URL: http://supabase.invalid
       SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
       SUPABASE_BUCKET: ci-bucket
-      # ADMIN_EMAILS / PROFESSOR_EMAILS NO se definen aquí a propósito: los tests
-      # afirman sobre correos concretos, así que las listas viven fijas en
-      # backend/test/support/env.ts y no deben poder cambiarse desde CI.
+
+      # NO se definen aquí, a propósito:
+      #  · DATABASE_URL  → la deriva la suite de TEST_DATABASE_URL; fijarla a mano
+      #    arriesgaría apuntar la app a una base distinta de la que se migra y limpia.
+      #  · ADMIN_EMAILS / PROFESSOR_EMAILS → los tests afirman sobre correos concretos
+      #    de esas listas, así que viven fijas en backend/test/support/env.ts y no
+      #    deben poder cambiarse desde CI.
 
     steps:
       - uses: actions/checkout@v4

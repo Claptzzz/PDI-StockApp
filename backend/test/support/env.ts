@@ -1,7 +1,14 @@
 /**
- * Entorno de la suite e2e. Se importa desde `global-setup.ts` y desde el setup de
- * cada worker, ANTES de construir la app, porque varios services leen la config en
- * su constructor (ADMIN_EMAILS en AuthService/CoursesService/GroupsService).
+ * Entorno de la suite e2e. La suite es AUTOSUFICIENTE: pone en `process.env` todo lo
+ * que la app necesita para arrancar, así que corre igual en local y en CI sin depender
+ * de que exista un `.env`.
+ *
+ * ⚠️ Este módulo NO debe importar nada que arrastre `src/app.module.ts`.
+ * `ConfigModule.forRoot()` se evalúa al CARGAR ese módulo (está en el argumento del
+ * decorador `@Module`), no al compilar la inyección de dependencias, y valida
+ * `process.env` en ese instante. Cualquier import que lo alcance antes de
+ * `applyTestEnv()` revienta el arranque. Por eso los helpers que necesita
+ * `global-setup.ts` viven aquí y no junto al bootstrap de la app.
  *
  * Los valores son FIJOS y viven aquí (no en un .env) para que los tests que dependen
  * de ellos —los allowlists de roles, sobre todo— se lean sin saltar a otro archivo.
@@ -71,11 +78,28 @@ export function testDatabaseUrl(): string {
   return url;
 }
 
-/** Aplica todas las variables que la app necesita para arrancar en modo test. */
+/** Esquema declarado en la URL (`?schema=...`); `public` si no viene. */
+export function schemaFromUrl(url: string): string {
+  const match = /[?&]schema=([^&]+)/.exec(url);
+  return match ? decodeURIComponent(match[1]) : 'public';
+}
+
+/**
+ * Deja en `process.env` TODAS las variables requeridas por `env.validation.ts`, para
+ * que la app arranque sin `.env`. Debe ejecutarse antes de que nada cargue
+ * `src/app.module.ts`; de eso se encargan `setup/apply-env.ts` (hook `setupFiles`, el
+ * más temprano del worker) y la primera línea de `global-setup.ts`.
+ *
+ * Es idempotente: llamarla dos veces no cambia nada.
+ */
 export function applyTestEnv(): void {
+  const databaseUrl = testDatabaseUrl();
+
   process.env.NODE_ENV = 'test';
-  process.env.DATABASE_URL = testDatabaseUrl();
-  delete process.env.DIRECT_URL;
+  process.env.DATABASE_URL = databaseUrl;
+  // Se fija (en vez de borrarse) para que el DIRECT_URL de un `.env` de desarrollo no
+  // pueda colarse: `ConfigModule` mergea el fichero para las claves ausentes.
+  process.env.DIRECT_URL = databaseUrl;
   process.env.JWT_SECRET = JWT_SECRET;
   process.env.API_PREFIX = API_PREFIX;
   process.env.ADMIN_EMAILS = ADMIN_EMAILS;
