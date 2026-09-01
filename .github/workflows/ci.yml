@@ -43,6 +43,64 @@ jobs:
       - name: Build
         run: npm run build
 
+  backend-e2e:
+    name: Backend (tests e2e)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    # Base de datos REAL para la suite: los tests no usan mocks de Prisma.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pdi
+          POSTGRES_PASSWORD: pdi
+          POSTGRES_DB: pdi_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pdi -d pdi_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Única variable que la suite necesita de fuera: dónde está la base de test.
+      TEST_DATABASE_URL: postgresql://pdi:pdi@localhost:5432/pdi_test?schema=public
+      # Secretos de mentira: Google y Supabase están mockeados en los tests, y el
+      # JWT lo firma la propia suite con este mismo secreto.
+      JWT_SECRET: ci-jwt-secret-de-pruebas-1234
+      GOOGLE_CLIENT_ID: ci-client-id.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: ci-client-secret
+      SUPABASE_URL: http://supabase.invalid
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+      SUPABASE_BUCKET: ci-bucket
+      # ADMIN_EMAILS / PROFESSOR_EMAILS NO se definen aquí a propósito: los tests
+      # afirman sobre correos concretos, así que las listas viven fijas en
+      # backend/test/support/env.ts y no deben poder cambiarse desde CI.
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      # `test:e2e` aplica las migraciones con `prisma migrate deploy` en su globalSetup.
+      - name: Tests e2e
+        run: npm run test:e2e
+
   frontend:
     name: Frontend (lint + build)
     runs-on: ubuntu-latest
