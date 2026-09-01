@@ -281,19 +281,9 @@ describe('Importación de grupos por CSV', () => {
         .expect(400);
     });
 
-    /*
-     * BUG CONFIRMADO (reportado en la Fase 13, sin corregir).
-     *
-     * La regla documentada en `GroupsService.addMember` es explícita:
-     *   "INCLUDES, no igualdad: un alumno que además esté en ADMIN_EMAILS sigue
-     *    pudiendo ser miembro de un grupo".
-     * El primer filtro la respeta (`resolveRoles(...).includes(STUDENT)`), pero el
-     * siguiente compara el rol PRINCIPAL derivado (`existing.role !== Role.STUDENT`),
-     * que para un alumno-admin es ADMIN, y lo rechaza. Debe evaluarse contra `roles`,
-     * la fuente de verdad. Mismo patrón en `importRow` y en `resolveStudentUser`.
-     * Cuando se corrija, cambia `it.failing` por `it`.
-     */
-    it.failing('un alumno que además es admin sigue pudiendo ser integrante', async () => {
+    // Regresión de la Fase 13: la pertenencia se decide con el ARRAY `roles`, no con
+    // el rol principal (que para un alumno-admin es ADMIN y lo dejaba fuera).
+    it('un alumno que además es admin sigue pudiendo ser integrante', async () => {
       const alumnoAdmin = await createUser(prisma, {
         email: 'alumno.admin@alumnos.ucn.cl',
         roles: [Role.STUDENT, Role.ADMIN],
@@ -306,7 +296,7 @@ describe('Importación de grupos por CSV', () => {
         .expect(201);
     });
 
-    it.failing('el CSV también acepta a un alumno que además es admin', async () => {
+    it('el CSV también acepta a un alumno que además es admin', async () => {
       await createUser(prisma, {
         email: 'alumno.admin@alumnos.ucn.cl',
         roles: [Role.STUDENT, Role.ADMIN],

@@ -5,7 +5,7 @@ import { Role, User } from '@prisma/client';
 import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from './interfaces/auth.types';
-import { primaryRole, resolveRoles, unionRoles } from './role.util';
+import { effectiveRoles, primaryRole, resolveRoles, unionRoles } from './role.util';
 
 export interface GoogleLoginResult {
   accessToken: string;
@@ -111,7 +111,7 @@ export class AuthService {
       }
 
       // Filas anteriores al backfill podrían traer `roles` vacío: se cae a `role`.
-      const currentRoles = existing.roles.length > 0 ? existing.roles : [existing.role];
+      const currentRoles = effectiveRoles(existing);
       const merged = unionRoles(currentRoles, derivedRoles);
 
       const data: { googleId?: string; roles?: Role[]; role?: Role } = {};

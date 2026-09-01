@@ -443,35 +443,27 @@ describe('Resolución de discrepancias', () => {
     });
 
     /*
-     * BUG CONFIRMADO (reportado en la Fase 13, sin corregir).
-     *
-     * `KitsService.getKitDetail` arma sus flags con `summaryFlags`, que decide si hay
-     * discrepancias PENDIENTES mirando `item._count.resolutions`. El listado sí incluye
-     * ese `_count`, pero el detalle carga `resolutions` completas y NO el `_count`, así
-     * que `hasDiscrepancies` se calcula siempre con 0 resoluciones: el detalle sigue
-     * marcando el kit en rojo después de resolver, mientras el listado ya lo da por
-     * atendido. Cuando se corrija, cambia `it.failing` por `it`.
+     * Regresión de la Fase 13: el listado pide solo el `_count` de resoluciones y el
+     * detalle las `resolutions` completas. Cuando los flags miraban un único shape, el
+     * detalle contaba siempre 0 y seguía marcando en rojo un kit ya atendido.
      */
-    it.failing(
-      'el detalle del kit informa lo mismo que el listado sobre discrepancias pendientes',
-      async () => {
-        const { kit, item } = await kitConDiscrepancia();
-        await resolver(kit.id, item.id, {
-          action: 'ACKNOWLEDGED',
-          quantity: 1,
-          note: 'Atendida',
-        }).expect(201);
+    it('el detalle del kit informa lo mismo que el listado sobre discrepancias pendientes', async () => {
+      const { kit, item } = await kitConDiscrepancia();
+      await resolver(kit.id, item.id, {
+        action: 'ACKNOWLEDGED',
+        quantity: 1,
+        note: 'Atendida',
+      }).expect(201);
 
-        const lista = await as(app, admin)
-          .get(`/api/courses/${curso.id}/groups/${grupo.id}/kits`)
-          .expect(200);
-        const detalle = await as(app, admin)
-          .get(`/api/courses/${curso.id}/groups/${grupo.id}/kits/${kit.id}`)
-          .expect(200);
+      const lista = await as(app, admin)
+        .get(`/api/courses/${curso.id}/groups/${grupo.id}/kits`)
+        .expect(200);
+      const detalle = await as(app, admin)
+        .get(`/api/courses/${curso.id}/groups/${grupo.id}/kits/${kit.id}`)
+        .expect(200);
 
-        expect(detalle.body.items[0].isResolved).toBe(true);
-        expect(detalle.body.hasDiscrepancies).toBe(lista.body[0].hasDiscrepancies);
-      },
-    );
+      expect(detalle.body.items[0].isResolved).toBe(true);
+      expect(detalle.body.hasDiscrepancies).toBe(lista.body[0].hasDiscrepancies);
+    });
   });
 });

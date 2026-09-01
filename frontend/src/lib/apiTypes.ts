@@ -401,8 +401,15 @@ export interface MyKitDetail {
   /** Fecha en que aceptó el usuario actual (null si aún no acepta). */
   myAcceptedAt: string | null;
   allAccepted: boolean;
-  /** Versión vigente del texto; se reenvía al aceptar. */
-  termsVersion: string;
+  /** Versión vigente del texto; se reenvía al aceptar. `null` si aún no hay ninguna. */
+  termsVersion: string | null;
+  /**
+   * ¿Hay condiciones vigentes que firmar? Es independiente de `isVerified`: ver el kit
+   * nunca depende de que el curso tenga documento, solo la firma.
+   */
+  canAccept: boolean;
+  /** Motivo legible para el alumno cuando `canAccept` es false. */
+  acceptBlockedReason: string | null;
 }
 
 // --- Resumen agregado del curso (Fase 10c) ---

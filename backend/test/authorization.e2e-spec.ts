@@ -230,15 +230,8 @@ describe('Autorización por curso', () => {
         .expect(403);
     });
 
-    /*
-     * BUG CONFIRMADO (reportado en la Fase 13, sin corregir). Tercera aparición del
-     * mismo patrón que en `GroupsService`: `CoursesService.resolveStudentUser` decide
-     * con el rol PRINCIPAL (`existing.role !== Role.STUDENT`) en vez de con `roles`,
-     * así que un alumno-admin no puede ser nombrado ayudante aunque
-     * `resolveRoles(...)` sí incluya STUDENT (comprobación que el propio método hace
-     * dos líneas antes). Cuando se corrija, cambia `it.failing` por `it`.
-     */
-    it.failing('un alumno que además es admin puede ser nombrado ayudante', async () => {
+    // Regresión de la Fase 13: `resolveStudentUser` decidía con el rol principal.
+    it('un alumno que además es admin puede ser nombrado ayudante', async () => {
       const alumnoAdmin = await createUser(prisma, {
         email: 'alumno.admin@alumnos.ucn.cl',
         roles: [Role.STUDENT, Role.ADMIN],

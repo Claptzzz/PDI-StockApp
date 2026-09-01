@@ -343,6 +343,98 @@ describe('Verificación del kit y aceptación de condiciones', () => {
     });
   });
 
+  describe('ver el kit no depende de que haya condiciones publicadas', () => {
+    /** Deja el curso sin ninguna versión vigente que firmar. */
+    const sinCondicionesVigentes = async () => {
+      await prisma.termsVersion.deleteMany({});
+    };
+
+    it('el alumno puede ver su kit aunque el curso aún no tenga condiciones', async () => {
+      const kit = await kitDelGrupo();
+      await sinCondicionesVigentes();
+
+      const res = await as(app, ana).get(`/api/me/kits/${kit.id}`).expect(200);
+
+      expect(res.body.id).toBe(kit.id);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.termsVersion).toBeNull();
+      expect(res.body.canAccept).toBe(false);
+      expect(res.body.acceptBlockedReason).toContain('todavía no están disponibles');
+      // El motivo es para el alumno: no lo manda a un panel que no puede abrir.
+      expect(res.body.acceptBlockedReason).not.toContain('Administración');
+    });
+
+    it('con condiciones vigentes el detalle las expone y habilita la firma', async () => {
+      const kit = await kitDelGrupo();
+
+      const res = await as(app, ana).get(`/api/me/kits/${kit.id}`).expect(200);
+
+      expect(res.body).toMatchObject({
+        termsVersion: '1.0',
+        canAccept: true,
+        acceptBlockedReason: null,
+      });
+    });
+
+    it('también se puede verificar el kit sin condiciones publicadas', async () => {
+      const kit = await kitDelGrupo();
+      await sinCondicionesVigentes();
+
+      const res = await verificar(ana, kit.id, todosConformes(kit.items)).expect(201);
+
+      expect(res.body.isVerified).toBe(true);
+      expect(res.body.canAccept).toBe(false);
+      const enDb = await prisma.kit.findUniqueOrThrow({ where: { id: kit.id } });
+      expect(enDb.verifiedById).toBe(ana.id);
+    });
+
+    it('firmar SÍ se bloquea, con un mensaje dirigido al alumno', async () => {
+      const kit = await kitDelGrupo();
+      await verificar(ana, kit.id, todosConformes(kit.items)).expect(201);
+      await sinCondicionesVigentes();
+
+      const res = await as(app, ana)
+        .post(`/api/me/kits/${kit.id}/accept`)
+        .send({ termsVersion: '1.0' })
+        .expect(409);
+
+      expect(res.body.message).toContain('todavía no están disponibles');
+      expect(res.body.message).not.toContain('Administración');
+      expect(await prisma.kitAcceptance.count()).toBe(0);
+    });
+
+    it('publicar las condiciones desbloquea la firma sin más cambios', async () => {
+      const kit = await kitDelGrupo();
+      await verificar(ana, kit.id, todosConformes(kit.items)).expect(201);
+      await sinCondicionesVigentes();
+      await as(app, ana)
+        .post(`/api/me/kits/${kit.id}/accept`)
+        .send({ termsVersion: '2.0' })
+        .expect(409);
+
+      const doc = await prisma.termsDocument.findFirstOrThrow({ where: { isDefault: true } });
+      await prisma.termsVersion.create({
+        data: {
+          documentId: doc.id,
+          version: '2.0',
+          title: 'Condiciones 2.0',
+          body: 'Texto',
+          publishedAt: new Date(),
+          createdById: admin.id,
+        },
+      });
+
+      const detalle = await as(app, ana).get(`/api/me/kits/${kit.id}`).expect(200);
+      expect(detalle.body).toMatchObject({ termsVersion: '2.0', canAccept: true });
+
+      await as(app, ana)
+        .post(`/api/me/kits/${kit.id}/accept`)
+        .send({ termsVersion: '2.0' })
+        .expect(201);
+      expect(await prisma.kitAcceptance.count()).toBe(1);
+    });
+  });
+
   describe('inmutabilidad de las versiones publicadas', () => {
     it('una versión publicada no se puede editar', async () => {
       const version = await prisma.termsVersion.findFirstOrThrow({

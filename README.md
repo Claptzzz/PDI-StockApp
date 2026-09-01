@@ -398,10 +398,12 @@ TEST_DATABASE_URL="postgresql://pdi:pdi@localhost:5432/pdi?schema=test_e2e"
 5. Nombra el test por la REGLA, en español: `'un ayudante no puede crear grupos'`, no
    `'POST /groups devuelve 403'`.
 
-> Los tests marcados con `it.failing(...)` documentan **bugs reales confirmados** que
-> todavía no se han corregido: pasan mientras el bug exista y se ponen en rojo cuando
-> se arregle, que es la señal para cambiarlos a `it(...)`. Cada uno lleva encima el
-> diagnóstico completo.
+> **Convención para un bug encontrado y aún no corregido:** escribe el test que expresa
+> la regla correcta y márcalo con `it.failing(...)`, con el diagnóstico en un comentario
+> encima. Pasa mientras el bug exista y se pone en rojo al arreglarse, que es la señal
+> para cambiarlo a `it(...)`. Ahora mismo **no queda ninguno**: los tres que abrió la
+> Fase 13 se corrigieron y ya son `it(...)` normales, con un comentario que recuerda la
+> regresión que cubren.
 
 ## CI/CD
 
